@@ -156,6 +156,23 @@
         let chart, candleSeries, ma5Series, ma20Series, ma60Series, volumeSeries;
 
         document.addEventListener('DOMContentLoaded', function () {
+        	// ⭐️ 1. 대시보드에서 선택한 종목이 있는지 확인
+            const savedCode = localStorage.getItem('selectedCode');
+            const savedName = localStorage.getItem('selectedName');
+
+            if (savedCode && savedName) {
+                // 있으면 그걸로 설정
+                currentCode = savedCode;
+                currentName = savedName;
+                // 사용 후 삭제 (일회성)
+                localStorage.removeItem('selectedCode');
+                localStorage.removeItem('selectedName');
+            } else {
+                // 없으면 기본값 (삼성전자)
+                currentCode = "005930";
+                currentName = "삼성전자";
+            }
+            
             initChart();
             loadDataAndAnalysis(); // 초기 실행
         });

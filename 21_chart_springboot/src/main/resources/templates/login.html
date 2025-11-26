@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+<meta charset="UTF-8">
+<title>로그인</title>
+<style>
+body {
+    font-family: '맑은 고딕', sans-serif;
+    background-color: #f4f6f8;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+.login-container {
+    background-color: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    padding: 40px 50px;
+    width: 380px;
+    text-align: center;
+}
+
+input, button {
+    box-sizing: border-box;
+}
+h2 {
+    color: #2962FF;
+    margin-bottom: 30px;
+}
+input[type="text"], input[type="password"] {
+    width: 100%;
+    padding: 12px;
+    margin: 8px 0 16px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 15px;
+}
+button {
+    width: 100%;
+    padding: 12px;
+    background-color: #2962FF;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.2s;
+    border: 1px solid #ccc;
+}
+button:hover {
+    background-color: rgb(0, 0, 160);
+}
+.link-box {
+    margin-top: 15px;
+    font-size: 0.9rem;
+}
+.link-box a {
+    color: #2962FF;
+    text-decoration: none;
+}
+.link-box a:hover {
+    text-decoration: underline;
+}
+.error-msg {
+    color: #d9534f;
+    background-color: #fdeaea;
+    border: 1px solid #f5c2c0;
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 15px;
+    font-size: 0.9rem;
+}
+</style>
+</head>
+
+<body>
+<div class="login-container">
+    <h2>캔들차트 분석 프로그램</h2>
+
+    <!-- ✅ 로그인 실패 시 메시지 표시 -->
+    <div th:if="${error}" class="error-msg" th:text="${error}"></div>
+
+    <form th:action="@{/user/loginProc}" method="post">
+        <input type="text" name="id" placeholder="아이디" required>
+        <input type="password" name="password" placeholder="비밀번호" required>
+        <button type="submit">로그인</button>
+    </form>
+
+    <div class="link-box">
+        <p>계정이 없으신가요? <a th:href="@{/user/join}">회원가입</a></p>
+    </div>
+</div>
+</body>
+</html>

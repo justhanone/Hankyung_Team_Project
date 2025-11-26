@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+<meta charset="UTF-8">
+<title>회원가입 | 가족 건강 캘린더</title>
+<style>
+body {
+    font-family: '맑은 고딕', sans-serif;
+    background-color: #f4f6f8;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+.join-container {
+    background-color: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+    padding: 40px 50px;
+    width: 420px;
+    text-align: center;
+}
+
+input, button {
+    box-sizing: border-box;
+}
+h2 {
+    color: #2962FF;
+    margin-bottom: 30px;
+}
+input[type="text"], input[type="password"], input[type="email"] {
+    width: 100%;
+    padding: 12px;
+    margin: 8px 0 16px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 15px;
+}
+button {
+    width: 100%;
+    padding: 12px;
+    background-color: #2962FF;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.2s;
+}
+button:hover {
+    background-color: rgb(0, 0, 160);
+}
+.link-box {
+    margin-top: 15px;
+    font-size: 0.9rem;
+}
+.link-box a {
+    color: #2962FF;
+    text-decoration: none;
+}
+.link-box a:hover {
+    text-decoration: underline;
+}
+</style>
+</head>
+
+<body>
+<div class="join-container">
+    <h2>회원가입</h2>
+
+    <form th:action="@{/user/joinProc}" method="post">
+    	<input type="text" name="name" placeholder="이름" required>
+        <input type="text" name="id" placeholder="아이디" required>
+        <input type="password" name="password" placeholder="비밀번호" required>
+        <input type="email" name="email" placeholder="이메일" required>
+        <button type="submit">회원가입</button>
+    </form>
+
+    <div class="link-box">
+        <a th:href="@{/user/login}">이미 계정이 있으신가요? 로그인</a>
+    </div>
+</div>
+</body>
+</html>
