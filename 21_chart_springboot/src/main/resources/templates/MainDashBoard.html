@@ -163,8 +163,13 @@
             loadRealRanking();
 
             // 2. 웹소켓 연결
-            if (APPROVAL_KEY) connectWebSocket();
-            else console.error("⛔ WebSocket 접속키가 없습니다.");
+            // 2. [수정] 장 운영 시간 체크 후 웹소켓 연결
+            if (isMarketOpen()) {
+                if (APPROVAL_KEY) connectWebSocket();
+                else console.log("웹소켓 키가 존재하지 않습니다.");
+            } else {
+                console.log("🌙 현재는 장 마감 시간입니다. 웹소켓을 연결하지 않습니다. (REST API 데이터 유지)");
+            }
             
             // 3. 검색창 초기화
             setupSearch();
@@ -488,4 +493,23 @@
         document.getElementById('rankModal').addEventListener('click', function(e) {
             if (e.target === this) closeModal();
         });
+        
+     	// 장 운영 시간 체크 함수 (평일 09:00 ~ 15:40)
+        function isMarketOpen() {
+            const now = new Date();
+            const day = now.getDay(); // 0:일요일, 6:토요일
+            const hour = now.getHours();
+            const minute = now.getMinutes();
+            const time = hour * 100 + minute; // 예: 9시 30분 -> 930
+
+            // 1. 주말 체크
+            if (day === 0 || day === 6) return false;
+
+            // 2. 시간 체크 (09:00 ~ 15:40)
+            // 장 마감 후 종가 확정 시간 등을 고려하여 15:40까지 여유 있게 잡음
+            if (time >= 900 && time <= 1540) {
+                return true;
+            }
+            return false;
+        }
     </script>

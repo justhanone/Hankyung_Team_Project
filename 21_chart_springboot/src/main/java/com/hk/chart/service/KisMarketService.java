@@ -512,57 +512,67 @@ public class KisMarketService {
         }
     }
 
-    public IndexInfoDto getIndexInfo(String indexCode) {
-        String accessToken = authService.getAccessToken();
+         //국내업종 현재지수 조회
+         // - 장 운영 중: 실시간 지수 제공
+         // - 장 마감 후: 종가 지수 제공 (FHKUP03500100 대신 FHPUP02100000 사용)
+        public IndexInfoDto getIndexInfo(String indexCode) {
+            String accessToken = authService.getAccessToken();
 
-        try {
-            // [수정 1] 응답을 유연한 Map으로 받아서 통째로 로그 찍기
-            Map<String, Object> responseMap = kisWebClient.get()
+            try {
+                // 1. API 호출
+                // URL: /uapi/domestic-stock/v1/quotations/inquire-index-price
+                // TR_ID: FHPUP02100000 (장 마감 후에도 데이터 나옴)
+                String responseBody = kisWebClient.get()
                     .uri(uriBuilder -> uriBuilder
-                        .path("/uapi/domestic-stock/v1/quotations/inquire-price")
-                        .queryParam("FID_COND_MRKT_DIV_CODE", "U") 
-                        .queryParam("FID_INPUT_ISCD", indexCode)
+                        .path("/uapi/domestic-stock/v1/quotations/inquire-index-price")
+                        .queryParam("FID_COND_MRKT_DIV_CODE", "U") // U: 업종
+                        .queryParam("FID_INPUT_ISCD", indexCode)    // 0001(코스피), 1001(코스닥)
                         .build())
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                     .header("appkey", kisApiConfig.getAppKey())
                     .header("appsecret", kisApiConfig.getAppSecret())
-                    .header("tr_id", TR_ID_INDEX_PRICE)
-                    .header("custtype", "P") // [수정 2] 개인(P) 고객 유형 헤더 추가 (필수일 때가 많음)
+                    .header("tr_id", "FHPUP02100000") // ⭐️ 중요: 지수 전용 TR
+                    .header("custtype", "P")
                     .retrieve()
-                    .bodyToMono(Map.class)
+                    .bodyToMono(String.class)
                     .block();
 
-            // [수정 3] 디버깅을 위해 응답 전체 출력 (성공하든 실패하든 확인)
-            // System.out.println(">>> [Index API Full Log] " + responseMap); 
+                // 2. 결과 파싱
+                ObjectMapper mapper = new ObjectMapper();
+                Map<String, Object> responseMap = mapper.readValue(responseBody, Map.class);
 
-            if (responseMap != null) {
-                String rtCd = (String) responseMap.get("rt_cd");
-                
-                if ("0".equals(rtCd)) {
+                // 3. 응답 검증 ('rt_cd'가 0이면 성공)
+                if (responseMap != null && "0".equals(responseMap.get("rt_cd"))) {
                     Map<String, String> output = (Map<String, String>) responseMap.get("output");
+                    
                     if (output != null) {
+                        // ⭐️ 중요: API마다 필드명이 다름 (FHPUP02100000 기준 필드명 매핑)
                         return IndexInfoDto.builder()
-                                .price(output.get("BSTP_NMIX_PRPR"))
-                                .sign(output.get("BSTP_NMIX_PRDY_VRSS_SIGN"))
-                                .change(output.get("BSTP_NMIX_PRDY_VRSS"))
-                                .rate(output.get("BSTP_NMIX_PRDY_CTRT"))
+                                .price(output.get("bstp_nmix_prpr"))  // 현재지수
+                                .sign(output.get("prdy_vrss_sign"))   // 대비 부호
+                                .change(output.get("bstp_nmix_prdy_vrss"))      // 전일 대비
+                                .rate(output.get("bstp_nmix_prdy_ctrt"))        // 등락률
                                 .build();
                     }
                 } else {
-                    // [수정 4] 에러 발생 시 msg1 외에 전체 맵을 출력해서 원인 파악
-                    System.err.println(">>> [Index Error] Code: " + rtCd + ", Msg: " + responseMap.get("msg1"));
-                    System.err.println(">>> [Index Error Full Body] " + responseMap);
+                    // 에러 발생 시 로그 출력 (디버깅용)
+                    if (responseMap != null) {
+                        System.err.println(">>> [Index Error] Code: " + indexCode + ", Msg: " + responseMap.get("msg1"));
+                    }
                 }
-            }
-        } catch (Exception e) {
-            System.err.println(">>> [Index Exception] " + e.getMessage());
-            e.printStackTrace(); // 상세 스택 트레이스 출력
-        }
 
-        return IndexInfoDto.builder()
-                .price("0.00").sign("3").change("0.00").rate("0.00")
-                .build();
-    }
+            } catch (Exception e) {
+                System.err.println(">>> [Index Exception] " + e.getMessage());
+            }
+
+            // 4. 실패 시 기본값 반환 (화면 깨짐 방지)
+            return IndexInfoDto.builder()
+                    .price("-")
+                    .sign("3")
+                    .change("0.00")
+                    .rate("0.00")
+                    .build();
+        }
     
     /**
      * ✅ [스케줄러] 매 15분마다 실행 (0분, 15분, 30분, 45분)
