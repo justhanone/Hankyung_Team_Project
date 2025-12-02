@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>AlgoView - 자산배분 분석</title>
+    <link type="text/css" th:href="@{/css/main.css}" rel="stylesheet">
+    <link type="text/css" th:href="@{/css/chart.css}" rel="stylesheet">
+     <link type="text/css" th:href="@{/css/backtest.css}" rel="stylesheet">
+    <link rel="icon" type="image/png" th:href="@{/images/logo.png}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+</head>
+<body>
+    
+    <header>
+        <div class="header-content">
+            <div class="logo"><a href="/">Algo-View</a></div>
+            <nav class="nav-menu">
+                <a href="/">대시보드</a>
+                <a href="/chart">차트 분석</a>
+                <a href="/backtest">백테스트</a>
+                <a href="/allocation" class="active">자산배분</a>
+                <a href="/portfolio">포트폴리오</a>
+            </nav>
+        </div>
+    </header>
+
+    <div class="split-layout">
+        
+        <div class="panel">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h3 style="margin:0;">🎛️ 포트폴리오 설정</h3>
+                <button class="btn-history" onclick="openHistoryModal()">🕒 지난 기록</button>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <label style="display:block; margin-bottom:5px; font-weight:600; font-size:14px;">초기 투자금 (원)</label>
+                <input type="number" id="seedMoney" value="10000000" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box;">
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label style="display:block; margin-bottom:5px; font-weight:600; font-size:14px;">분석 기간</label>
+                <select id="period" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px;">
+                    <option value="12">최근 1년</option>
+                    <option value="36">최근 3년</option>
+                    <option value="60">최근 5년</option>
+                </select>
+            </div>
+
+            <label style="display:block; margin-bottom:10px; font-weight:600; font-size:14px;">자산 구성 (비중 %)</label>
+            <div id="assetList"></div>
+            
+            <button class="btn-add-asset" onclick="openSearchModal()">+ 종목 검색 및 추가</button>
+            
+            <div style="text-align:right; font-size:13px; color:#666; margin-top:10px;">
+                비중 합계: <span id="totalWeight" style="font-weight:bold;">0</span>%
+            </div>
+
+            <button class="btn-submit" onclick="runAnalysis()">Analyze Portfolio ▶</button>
+        </div>
+
+        <div class="panel">
+            <h3 style="border-bottom:2px solid #333; padding-bottom:10px; margin-bottom:20px;">📊 Highlights</h3>
+            
+            <div class="highlight-section" style="display:flex; flex-direction:column; align-items:center;">
+                    <div class="hs-title" style="width:100%; color:#333;">Allocation (비중)</div>
+                    <div style="width: 180px; height: 180px; position:relative;">
+                        <canvas id="donutChart"></canvas>
+                    </div>
+            </div>
+            
+            <div class="highlights-container">
+                <div class="highlight-section">
+                    <div class="hs-title" style="color:#2563eb;">Return (수익)</div>
+                    <div class="stat-row"><span class="stat-label">Final Balance</span><span class="stat-value" id="resFinal">0 원</span></div>
+                    <div class="stat-row"><span class="stat-label">Total Return</span><span class="stat-value" id="resTotal">0.00%</span></div>
+                    <div class="stat-row"><span class="stat-label">CAGR <span class="stat-sub">(연평균)</span></span><span class="stat-value" id="resCagr">0.00%</span></div>
+                </div>
+
+                <div class="highlight-section">
+                    <div class="hs-title" style="color:#e11d48;">Risk (위험)</div>
+                    <div class="stat-row"><span class="stat-label">Stdev <span class="stat-sub">(변동성)</span></span><span class="stat-value" id="resVol">0.00%</span></div>
+                    <div class="stat-row"><span class="stat-label">Max Drawdown</span><span class="stat-value" id="resMdd" style="color:#2563eb;">0.00%</span></div>
+                    <div class="stat-row"><span class="stat-label">Sharpe Ratio</span><span class="stat-value" id="resSharpe">0.00</span></div>
+                </div>
+            </div>
+
+            <h4 style="margin-bottom:15px;">📈 Portfolio Growth</h4>
+            <div style="height: 350px;">
+                <canvas id="allocChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div id="searchModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 style="margin:0;">종목 검색</h3>
+                <span class="close-btn" onclick="closeSearchModal()">✕</span>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="modalSearchInput" class="search-input" placeholder="종목명 입력 (예: 삼성)" autocomplete="off">
+                <ul id="modalSearchList" class="search-list"></ul>
+            </div>
+        </div>
+    </div>
+
+    <div id="historyModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 style="margin:0;">🕒 나의 분석 기록</h3>
+                <span class="close-btn" onclick="closeHistoryModal()">✕</span>
+            </div>
+            <div class="modal-body">
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>날짜</th>
+                            <th>자산 구성</th>
+                            <th style="text-align:right;">초기금</th>
+                            <th style="text-align:right;">수익률</th>
+                            <th style="text-align:center;">불러오기</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyList"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let lineChart = null; // 수익률 곡선 차트
+        let donutChart = null; // 도넛 차트
+
+        document.addEventListener('DOMContentLoaded', () => {
+            addAssetToTable('삼성전자', '005930', 50);
+            addAssetToTable('SK하이닉스', '000660', 50);
+            updateTotalWeight();
+            
+            // 초기 도넛 차트 그리기 (기본값)
+            updateDonutChart([{name:'삼성전자', weight:50}, {name:'SK하이닉스', weight:50}]);
+        });
+
+        // ------------------------
+        // 모달 공통 함수
+        // ------------------------
+        function openAnyModal(modalId) {
+            const modal = document.getElementById(modalId);
+            modal.style.display = 'flex';
+            setTimeout(() => { modal.classList.add('show'); }, 10);
+        }
+        function closeAnyModal(modalId) {
+            const modal = document.getElementById(modalId);
+            modal.classList.remove('show');
+            setTimeout(() => { modal.style.display = 'none'; }, 300);
+        }
+
+        // ------------------------
+        // 자산 리스트 관리
+        // ------------------------
+        function addAssetToTable(name, code, weight = 0) {
+            const div = document.createElement('div');
+            div.className = 'asset-row';
+            div.innerHTML = `
+                <div class="asset-info">
+                    ${name}
+                    <span class="asset-code">${code}</span>
+                    <input type="hidden" class="code-input" value="${code}">
+                    <input type="hidden" class="name-input" value="${name}">
+                </div>
+                <input type="number" class="weight-input" value="${weight}" oninput="updateTotalWeight()" placeholder="%">
+                <span style="font-size:14px; color:#666;">%</span>
+                <button class="btn-remove" onclick="this.parentElement.remove(); updateTotalWeight();">×</button>
+            `;
+            document.getElementById('assetList').appendChild(div);
+            updateTotalWeight();
+        }
+
+        function updateTotalWeight() {
+            let sum = 0;
+            const currentAssets = [];
+            document.querySelectorAll('.asset-row').forEach(row => {
+                const w = Number(row.querySelector('.weight-input').value);
+                const n = row.querySelector('.name-input').value;
+                sum += w;
+                if(w > 0) currentAssets.push({name: n, weight: w});
+            });
+            
+            const span = document.getElementById('totalWeight');
+            span.innerText = sum;
+            span.style.color = sum === 100 ? '#2563eb' : '#e11d48';
+            
+            // 비중 변경 시 실시간 도넛 차트 업데이트 (선택 사항)
+            // updateDonutChart(currentAssets); 
+        }
+
+        // ------------------------
+        // 분석 실행
+        // ------------------------
+        function runAnalysis() {
+            const seed = document.getElementById('seedMoney').value;
+            const period = document.getElementById('period').value;
+            const rows = document.querySelectorAll('.asset-row');
+            
+            const assets = [];
+            let weightSum = 0;
+
+            rows.forEach(row => {
+                const code = row.querySelector('.code-input').value;
+                const name = row.querySelector('.name-input').value;
+                const weight = Number(row.querySelector('.weight-input').value);
+                
+                if(weight > 0) {
+                    assets.push({ code: code, name: name, weight: weight });
+                    weightSum += weight;
+                }
+            });
+
+            if(assets.length === 0) { alert("종목을 추가해주세요."); return; }
+            if(weightSum !== 100) { alert("비중 합계는 100%여야 합니다."); return; }
+
+            const req = { seedMoney: seed, periodMonths: period, assets: assets };
+            document.querySelector('.btn-submit').innerText = "분석 중...";
+
+            fetch('/api/allocation/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(req)
+            })
+            .then(res => res.json())
+            .then(data => {
+                renderResult(data);
+                updateDonutChart(assets); // 분석 실행 시 도넛 차트 갱신
+            })
+            .catch(err => alert("분석 실패: " + err))
+            .finally(() => { document.querySelector('.btn-submit').innerText = "Analyze Portfolio ▶"; });
+        }
+
+        function renderResult(data) {
+            document.getElementById('resFinal').innerText = Math.round(data.finalBalance).toLocaleString() + " 원";
+            
+            const totalEl = document.getElementById('resTotal');
+            totalEl.innerText = data.totalReturn + "%";
+            totalEl.className = "stat-value " + (data.totalReturn > 0 ? "up" : "down");
+            document.getElementById('resCagr').innerText = data.cagr + "%";
+
+            document.getElementById('resVol').innerText = data.volatility + "%";
+            document.getElementById('resMdd').innerText = data.mdd + "%";
+            document.getElementById('resSharpe').innerText = data.sharpeRatio;
+
+            // Line Chart
+            const ctx = document.getElementById('allocChart').getContext('2d');
+            if(lineChart) lineChart.destroy();
+
+            lineChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.equityCurve.map(d => d.date),
+                    datasets: [{
+                        label: 'Portfolio Balance',
+                        data: data.equityCurve.map(d => d.value),
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                        fill: true, pointRadius: 0, borderWidth: 2, tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { 
+                        tooltip: { callbacks: { label: (ctx) => ctx.raw.toLocaleString() + " 원" } },
+                        legend: { display: false }
+                    },
+                    scales: { x: { grid: { display: false } }, y: { beginAtZero: false } }
+                }
+            });
+        }
+
+        // ✅ [NEW] 도넛 차트 업데이트 함수
+        function updateDonutChart(assets) {
+            const ctx = document.getElementById('donutChart').getContext('2d');
+            if(donutChart) donutChart.destroy();
+
+            // 색상 팔레트
+            const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#6366f1'];
+
+            donutChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: assets.map(a => a.name),
+                    datasets: [{
+                        data: assets.map(a => a.weight),
+                        backgroundColor: colors.slice(0, assets.length),
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }, // 공간 절약을 위해 범례 숨김 (툴팁으로 확인)
+                        tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${ctx.raw}%` } }
+                    },
+                    cutout: '65%' // 도넛 두께 조절
+                }
+            });
+        }
+
+        // ------------------------
+        // 모달 기능 (검색 & 기록)
+        // ------------------------
+        function openSearchModal() {
+            document.getElementById('modalSearchInput').value = '';
+            document.getElementById('modalSearchList').style.display = 'none';
+            openAnyModal('searchModal');
+            setTimeout(() => document.getElementById('modalSearchInput').focus(), 100);
+        }
+        function closeSearchModal() { closeAnyModal('searchModal'); }
+
+        document.getElementById('modalSearchInput').addEventListener('keyup', function() {
+            const keyword = this.value.trim();
+            const list = document.getElementById('modalSearchList');
+            if(keyword.length < 1) { list.style.display = 'none'; return; }
+
+            fetch(`/api/stock/search?keyword=${keyword}`)
+                .then(res => res.json())
+                .then(data => {
+                    list.innerHTML = '';
+                    if(data.length > 0) {
+                        list.style.display = 'block';
+                        data.forEach(stock => {
+                            const li = document.createElement('li');
+                            li.innerHTML = `${stock.name} <span style="color:#999; font-size:12px;">${stock.code}</span>`;
+                            li.onclick = () => {
+                                addAssetToTable(stock.name, stock.code, 0); 
+                                closeSearchModal();
+                            };
+                            list.appendChild(li);
+                        });
+                    } else { list.style.display = 'none'; }
+                });
+        });
+
+        function openHistoryModal() {
+            fetch('/api/allocation/history')
+                .then(res => {
+                    if (res.status === 401) { alert("로그인이 필요합니다."); return null; }
+                    return res.json();
+                })
+                .then(list => {
+                    if(!list) return;
+                    const tbody = document.getElementById('historyList');
+                    tbody.innerHTML = '';
+                    openAnyModal('historyModal');
+
+                    if (list.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">기록이 없습니다.</td></tr>';
+                        return;
+                    }
+
+                    list.forEach(item => {
+                        const row = document.createElement('tr');
+                        const profitClass = item.totalReturn > 0 ? 'up' : 'down';
+                        const jsonStr = item.assetsJson.replace(/"/g, '&quot;');
+
+                        row.innerHTML = `
+                            <td>${item.date}</td>
+                            <td>${item.assetsSummary}</td>
+                            <td style="text-align:right;">${item.seedMoney.toLocaleString()}</td>
+                            <td style="text-align:right;" class="${profitClass}">${item.totalReturn}%</td>
+                            <td style="text-align:center;">
+                                <button class="btn-load" onclick="restoreSettings('${item.seedMoney}', '${item.periodMonths}', '${jsonStr}')">불러오기</button>
+                            </td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                });
+        }
+        function closeHistoryModal() { closeAnyModal('historyModal'); }
+
+        function restoreSettings(seed, period, assetsJson) {
+            if (!confirm("설정값을 불러오시겠습니까?")) return;
+            document.getElementById('seedMoney').value = seed;
+            document.getElementById('period').value = period;
+            document.getElementById('assetList').innerHTML = '';
+            
+            const assets = JSON.parse(assetsJson.replace(/&quot;/g, '"'));
+            assets.forEach(a => addAssetToTable(a.name, a.code, a.weight));
+            updateTotalWeight();
+            updateDonutChart(assets); // 도넛 차트도 복원된 값으로 갱신
+            closeHistoryModal();
+        }
+
+        window.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                e.target.classList.remove('show');
+                setTimeout(() => { e.target.style.display = 'none'; }, 300);
+            }
+        });
+    </script>
+</body>
+</html>
