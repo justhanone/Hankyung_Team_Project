@@ -56,7 +56,7 @@
     </div>
 
     <script>
-        const PATTERN_DEFINITIONS = {
+    const PATTERN_DEFINITIONS = {
             "HAMMER": { name: "망치형", desc: "하락 추세 바닥에서 발생하며 상승 반전을 예고합니다.", trend: "상승", stars: 3 },
             "INVERTED_HAMMER": { name: "역망치형", desc: "바닥권에서 매수세가 유입되려는 신호입니다.", trend: "상승", stars: 2 },
             "BULLISH_ENGULFING": { name: "상승 장악형", desc: "전일 음봉을 오늘 양봉이 감싸는 강력한 상승 신호입니다.", trend: "상승", stars: 5 },
@@ -72,7 +72,6 @@
             "NONE": { name: "특이 패턴 없음", desc: "현재 분석된 뚜렷한 캔들 패턴이 없습니다.", trend: "중립", stars: 0 }
         };
 
-        // 전역 변수
         let currentCode = "005930";
         let currentName = "삼성전자";
         let currentPeriod = "D"; 
@@ -80,12 +79,11 @@
         let isLoading = false;
         let isWatchedState = false; 
         
-        // 차트 객체 (⭐️ chartContainer를 전역 변수로 추가했습니다!)
         let chartContainer;
         let chart, candleSeries, ma5Series, ma20Series, ma60Series, volumeSeries;
 
         document.addEventListener('DOMContentLoaded', function () {
-            // 대시보드 선택 종목 로드
+            // 1. 대시보드에서 넘어온 데이터 확인
             const savedCode = localStorage.getItem('selectedCode');
             const savedName = localStorage.getItem('selectedName');
 
@@ -94,17 +92,17 @@
                 currentName = savedName;
                 localStorage.removeItem('selectedCode');
                 localStorage.removeItem('selectedName');
-            } else {
-                currentCode = "005930";
-                currentName = "삼성전자";
             }
             
+            // 2. 초기화
             initChart();
-            loadDataAndAnalysis(); 
+            loadDataAndAnalysis();
+            
+            // 3. 검색 기능 초기화 호출
+            setupSearch();
         });
 
         function initChart() {
-            // ⭐️ 전역 변수에 할당 (const 제거)
             chartContainer = document.getElementById('tv_chart');
             
             chart = LightweightCharts.createChart(chartContainer, {
@@ -116,16 +114,21 @@
                 timeScale: { rightOffset: 12, barSpacing: 10, timeVisible: true, secondsVisible: false, borderColor: '#e0e0e0' },
             });
 
-            candleSeries = chart.addCandlestickSeries({ upColor: '#e11d48', borderUpColor: '#e11d48', wickUpColor: '#e11d48', downColor: '#2563eb', borderDownColor: '#2563eb', wickDownColor: '#2563eb', lastValueVisible: false, priceLineVisible: false });
-            ma5Series = chart.addLineSeries({ color: '#2962FF', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
-            ma20Series = chart.addLineSeries({ color: '#B71C1C', lineWidth: 2, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
-            ma60Series = chart.addLineSeries({ color: '#00C853', lineWidth: 2, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
-            volumeSeries = chart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol_scale', lastValueVisible: false, priceLineVisible: false });
+            candleSeries = chart.addCandlestickSeries({ upColor: '#e11d48', borderUpColor: '#e11d48', wickUpColor: '#e11d48', downColor: '#2563eb', borderDownColor: '#2563eb', wickDownColor: '#2563eb', lastValueVisible: false });
+            ma5Series = chart.addLineSeries({ color: '#2962FF', lineWidth: 1, crosshairMarkerVisible: false, lastValueVisible: false });
+            ma20Series = chart.addLineSeries({ color: '#B71C1C', lineWidth: 2, crosshairMarkerVisible: false, lastValueVisible: false });
+            ma60Series = chart.addLineSeries({ color: '#00C853', lineWidth: 2, crosshairMarkerVisible: false, lastValueVisible: false });
+            volumeSeries = chart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol_scale' , lastValueVisible: false});
             
             chart.priceScale('vol_scale').applyOptions({ scaleMargins: { top: 0.75, bottom: 0 } });
             chart.subscribeCrosshairMove(updateLegend);
             
             window.addEventListener('resize', () => chart.resize(chartContainer.clientWidth, 550));
+            
+            // [수정] loadData 함수가 없어서 에러가 발생하므로 주석 처리
+            // chart.timeScale().subscribeVisibleLogicalRangeChange(logicalRange => {
+            //     if (logicalRange !== null && logicalRange.from < 10 && !isLoading && allData.length > 0) loadData(allData[0].x);
+            // });
         }
 
         window.changePeriod = function(period) {
@@ -135,6 +138,8 @@
             event.target.classList.add('active');
             const pText = period === 'D' ? '일봉' : (period === 'W' ? '주봉' : '월봉');
             document.getElementById('analysisHeader').textContent = `📊 ${pText} 기준 캔들 패턴 분석`;
+            
+            // 데이터 초기화
             allData = [];
             candleSeries.setData([]); ma5Series.setData([]); ma20Series.setData([]); ma60Series.setData([]); volumeSeries.setData([]);
             loadDataAndAnalysis();
@@ -159,7 +164,6 @@
         }
 
         window.toggleWatchlist = function() {
-            const btn = document.getElementById('btnStar');
             const checkRedirect = (res) => {
                 if (res.redirected && res.url.includes('login')) return true;
                 return false;
@@ -177,7 +181,7 @@
                         else if (res.status === 401) {
                             if(confirm("로그인이 필요한 서비스입니다.\n로그인 하시겠습니까?")) location.href = '/user/login';
                         } else {
-                            const msg = await res.text(); alert("오류가 발생했습니다: " + msg);
+                            const msg = await res.text(); alert("오류 발생: " + msg);
                         }
                     });
             } else {
@@ -193,7 +197,7 @@
                         else if (res.status === 401) {
                             if(confirm("로그인이 필요한 서비스입니다.\n로그인 하시겠습니까?")) location.href = '/user/login';
                         } else {
-                            const msg = await res.text(); alert("오류가 발생했습니다: " + msg);
+                            const msg = await res.text(); alert("오류 발생: " + msg);
                         }
                     });
             }
@@ -268,14 +272,12 @@
             const ma20 = valid ? param.seriesData.get(ma20Series) : (allData.length > 0 ? allData[allData.length - 1]?.ma20 : null);
             const ma60 = valid ? param.seriesData.get(ma60Series) : (allData.length > 0 ? allData[allData.length - 1]?.ma60 : null);
 
-            const container = document.getElementById('chartLegend');
-            const starBtn = document.getElementById('btnStar'); 
             document.querySelector('.stock-title').innerText = `${currentName} (${currentCode})`;
             
-            // ⭐️ [수정] span 대신 div#chartInfo 생성
             let infoDiv = document.getElementById('chartInfo');
             if (!infoDiv) {
-                infoDiv = document.createElement('div'); // div로 변경
+                const container = document.getElementById('chartLegend');
+                infoDiv = document.createElement('div');
                 infoDiv.id = 'chartInfo';
                 container.appendChild(infoDiv);
             }
@@ -316,40 +318,59 @@
             });
         }
 
-        chart.timeScale().subscribeVisibleLogicalRangeChange(logicalRange => {
-            if (logicalRange !== null && logicalRange.from < 10 && !isLoading && allData.length > 0) loadData(allData[0].x);
-        });
+        // 검색 기능 설정 함수
+        function setupSearch() {
+            const searchInput = document.getElementById('searchInput');
+            const searchResult = document.getElementById('searchResult');
 
-        const searchInput = document.getElementById('searchInput');
-        const searchResult = document.getElementById('searchResult');
-        searchInput.addEventListener('keyup', function() {
-            const keyword = this.value.trim();
-            if (keyword.length < 1) { searchResult.style.display = 'none'; return; }
-            fetch(`/api/stock/search?keyword=${keyword}`).then(res => res.json()).then(list => {
-                searchResult.innerHTML = '';
-                if (list.length > 0) {
-                    searchResult.style.display = 'block';
-                    list.forEach(stock => {
-                        const li = document.createElement('li');
-                        li.textContent = `${stock.name} (${stock.code})`;
-                        li.onclick = () => selectStock(stock.code, stock.name);
-                        searchResult.appendChild(li);
-                    });
-                } else { searchResult.style.display = 'none'; }
+            searchInput.addEventListener('keyup', function() {
+                const keyword = this.value.trim();
+                if (keyword.length < 1) { searchResult.style.display = 'none'; return; }
+
+                fetch(`/api/stock/search?keyword=${keyword}`)
+                    .then(res => res.json())
+                    .then(list => {
+                        searchResult.innerHTML = '';
+                        if (list.length > 0) {
+                            searchResult.style.display = 'block';
+                            list.forEach(stock => {
+                                const li = document.createElement('li');
+                                li.textContent = `${stock.name} (${stock.code})`;
+                                li.onclick = () => selectStock(stock.code, stock.name);
+                                searchResult.appendChild(li);
+                            });
+                        } else {
+                            searchResult.style.display = 'none';
+                        }
+                    })
+                    .catch(err => console.error("검색 오류:", err));
             });
-        });
-
-        function selectStock(code, name) {
-            currentCode = code; currentName = name;
-            searchInput.value = ''; searchResult.style.display = 'none';
             
-            document.querySelector('.stock-title').textContent = `${name} (${code})`;
-            
-            allData = []; candleSeries.setData([]); ma5Series.setData([]); ma20Series.setData([]); volumeSeries.setData([]);
-            loadDataAndAnalysis();
+            // 외부 클릭 시 닫기
+            document.addEventListener('click', function(e) {
+                if (!searchInput.contains(e.target) && !searchResult.contains(e.target)) {
+                    searchResult.style.display = 'none';
+                }
+            });
         }
 
-        window.addEventListener('resize', () => { chart.resize(chartContainer.clientWidth, 550); });
+        // 종목 선택 시 호출되는 함수
+        function selectStock(code, name) {
+            currentCode = code;
+            currentName = name;
+            
+            // 검색창 초기화
+            const searchInput = document.getElementById('searchInput');
+            const searchResult = document.getElementById('searchResult');
+            searchInput.value = ''; 
+            searchResult.style.display = 'none';
+            
+            // 데이터 새로 로드
+            document.querySelector('.stock-title').textContent = `${name} (${code})`;
+            allData = []; 
+            candleSeries.setData([]); ma5Series.setData([]); ma20Series.setData([]); ma60Series.setData([]); volumeSeries.setData([]);
+            loadDataAndAnalysis();
+        }
     </script>
 </body>
 </html>

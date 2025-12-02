@@ -28,4 +28,6 @@ public class StockRanking {
     private String changeRate;  // 등락률
 
     private LocalDateTime updatedAt; // 업데이트 시간
+    
+    private Integer rankingType; // 랭킹 타입 (0: 급상승, 1: 급하락)
 }

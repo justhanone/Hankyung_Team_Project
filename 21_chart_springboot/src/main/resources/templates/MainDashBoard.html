@@ -3,19 +3,20 @@
       xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
 <head>
     <meta charset="UTF-8">
+    <title>AlgoView - 대시보드</title>
     <link type="text/css" th:href="@{/css/chart.css}" rel="stylesheet">
     <link type="text/css" th:href="@{/css/main.css}" rel="stylesheet">
     <link rel="icon" type="image/png" th:href="@{/images/logo.png}">
-    <title>AlgoView - 대시보드</title>
 </head>
 <body>
 
     <header>
         <div class="header-content">
-            <div class="logo"><a href="/">Algo-View</a></div>
+            <div class="logo">
+                <a href="/" style="vertical-align:middle;">Algo-View</a>
+            </div>
             <nav class="nav-menu">
-                <a href="/">대시보드</a>
-                <a href="/chart">차트 분석</a>
+                <a href="/" class="active">대시보드</a> <a href="/chart">차트 분석</a>
                 <a href="#">백테스트</a>
                 <a href="/portfolio">포트폴리오</a>
             </nav>
@@ -58,46 +59,42 @@
                 </div>
             </div>
         </section>
-		
-     	<div class="dashboard-grid">	
-			<!-- 급상승/급하락 -->
-			<div class="content-card">
-			    <div class="card-header">
-			        <div class="card-title">
-			            🔥 실시간 랭킹 
-			            <span id="rankModeLabel" style="font-size:12px; color:#f55; font-weight:bold; margin-left:4px;">
-			                급상승
-			            </span>
-			            <span id="rankUpdateTime"
-			                  style="font-size: 12px; color: #888; font-weight: normal; margin-left: 10px;"></span>
-			        </div>
-			        
-			        <div>
-			            <button id="btnRising" class="more-link2" onclick="setRankMode('rising')">급상승</button>
-			            <button id="btnFalling" class="more-link2" onclick="setRankMode('falling')">급하락</button>
-			            <span class="more-link" onclick="openModal()" style="cursor:pointer; margin-left:12px;">더보기 ></span>
-			        </div>
-			    </div>
-			
-			    <table class="stock-table">
-			        <thead>
-			            <tr>
-			                <th width="50">순위</th>
-			                <th>종목명</th>
-			                <th style="text-align: right;">현재가</th>
-			                <th style="text-align: right;">등락률</th>
-			            </tr>
-			        </thead>
-			        <tbody id="rankingList"></tbody>
-			    </table>
-			</div>
-			
-
-			<div class="content-card">
+        
+        <div class="dashboard-grid">    
+            <div class="content-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        🔥 실시간 랭킹 
+                        <span id="rankModeLabel" style="font-size:12px; color:#f55; font-weight:bold; margin-left:4px;">
+                            급상승
+                        </span>
+                        <span id="rankUpdateTime" style="font-size: 12px; color: #888; font-weight: normal; margin-left: 10px;"></span>
+                    </div>
+                    
+                    <div style="display:flex; align-items:center;">
+                        <button id="btnRising" class="more-link2" onclick="setRankMode('rising')">급상승</button>
+                        <button id="btnFalling" class="more-link2" onclick="setRankMode('falling')">급하락</button>
+                        <span class="more-link" onclick="openModal()" style="cursor:pointer; margin-left:8px; font-size:13px;">더보기 ></span>
+                    </div>
+                </div>
+            
+                <table class="stock-table">
+                    <thead>
+                        <tr>
+                            <th width="50">순위</th>
+                            <th>종목명</th>
+                            <th style="text-align: right;">현재가</th>
+                            <th style="text-align: right;">등락률</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rankingList"></tbody>
+                </table>
+            </div>
+            
+            <div class="content-card">
                 <div class="card-header">
                     <div class="card-title">⭐ 나의 관심 종목</div>
                     <div class="more-link" onclick="openManageModal()" style="cursor: pointer;">관리 ></div>
-                    
                 </div>
                 <table class="stock-table">
                     <thead>
@@ -107,13 +104,12 @@
                             <th style="text-align: right;">등락률</th>
                         </tr>
                     </thead>
-                    <tbody id="watchlist">
-                        </tbody>
+                    <tbody id="watchlist"></tbody>
                 </table>
             </div>
-		</div>
+        </div>
     </div>
-	
+    
     <div id="rankModal" class="modal-overlay">
         <div class="modal-content">
             <div class="modal-header">
@@ -121,13 +117,13 @@
                 <span class="close-btn" onclick="closeModal()">×</span>
             </div>
             <div class="modal-body">
-                <table class="stock-table" style="border: none;">
+                <table class="modal-table">
                     <thead>
                         <tr>
-                            <th width="60" style="padding-left: 20px;">순위</th>
+                            <th width="60" class="text-center">순위</th>
                             <th>종목명</th>
-                            <th style="text-align: right;">현재가</th>
-                            <th style="text-align: right; padding-right: 20px;">등락률</th>
+                            <th class="text-right">현재가</th>
+                            <th class="text-right">등락률</th>
                         </tr>
                     </thead>
                     <tbody id="rankingListFull">
@@ -144,16 +140,19 @@
                 <span class="close-btn" onclick="closeManageModal()">×</span>
             </div>
             <div class="modal-body">
-                <table class="stock-table">
+                <table class="modal-table">
                     <thead>
                         <tr>
-                            <th>종목명</th>
-                            <th width="80" style="text-align: center;">삭제</th>
+                            <th style="padding-left:20px;">종목명</th>
+                            <th width="80" class="text-center">관리</th>
                         </tr>
                     </thead>
                     <tbody id="manageList">
                         </tbody>
                 </table>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-close-modal" onclick="closeManageModal()" style="width:100%;">닫기</button>
             </div>
         </div>
     </div>
@@ -173,85 +172,82 @@
             loadInitialIndices(); 
             loadWatchlist();
             updateExchangeRate();
+            setRankMode('rising'); // 처음은 급상승
             
-            // 1.5. 처음은 급상승
-            setRankMode('rising');
-            
-            // 2. 웹소켓 연결
-            // 2. [수정] 장 운영 시간 체크 후 웹소켓 연결
+            // 2. 웹소켓 연결 (장 운영 시간 체크)
             if (isMarketOpen()) {
                 if (APPROVAL_KEY) connectWebSocket();
                 else console.log("웹소켓 키가 존재하지 않습니다.");
             } else {
-                console.log("🌙 현재는 장 마감 시간입니다. 웹소켓을 연결하지 않습니다. (REST API 데이터 유지)");
+                console.log("🌙 현재는 장 마감 시간입니다. 웹소켓 미연결.");
             }
             
             // 3. 검색창 초기화
             setupSearch();
 
-            // 4. 랭킹 자동 업데이트 (15분 주기)
+            // 4. 랭킹 자동 업데이트
             rankInterval = setInterval(() => {
                 console.log("⏰ 랭킹 업데이트 주기 도달");
                 loadRankByMode();
             }, UPDATE_INTERVAL);
         });
 
-        // [핵심] 차트 페이지 이동 공통 함수
-        // 검색, 랭킹, 관심종목 어디서든 이 함수 하나만 쓰면 됩니다.
+        // ---------------------------------------------------------
+        // 공통 유틸리티 함수
+        // ---------------------------------------------------------
+
+        // 차트 페이지 이동
         function moveToChart(code, name) {
             if (!code) return;
-            
-            console.log(`차트 이동: ${name} (${code})`);
-            
-            // 1. 로컬 스토리지에 저장 (차트 페이지에서 꺼내 씀)
             localStorage.setItem('selectedCode', code);
             localStorage.setItem('selectedName', name);
-            
-            // 2. 페이지 이동
             window.location.href = '/chart';
         }
-        
-        //모드에 따라 API를 바꿔서 호출하는 공통 함수
+
+        // 모달 열기 (애니메이션 효과 적용)
+        function openAnyModal(modalId) {
+            const modal = document.getElementById(modalId);
+            modal.style.display = 'flex';
+            setTimeout(() => { modal.classList.add('show'); }, 10);
+        }
+
+        // 모달 닫기
+        function closeAnyModal(modalId) {
+            const modal = document.getElementById(modalId);
+            modal.classList.remove('show');
+            setTimeout(() => { modal.style.display = 'none'; }, 300);
+        }
+
+        // ---------------------------------------------------------
+        // 데이터 로딩 로직
+        // ---------------------------------------------------------
+
         function loadRankByMode() {
-		    const url = (currentRankMode === 'rising')
-		        ? '/api/rank/rising'
-		        : '/api/rank/falling';
-		
-		    fetch(url)
-		        .then(res => res.json())
-		        .then(data => {
-		            if (!data || data.length === 0) return;
-		
-		            // 공통 테이블에 TOP5 렌더링
-		            renderTable('rankingList', data.slice(0, 5), true);
-		            
-		            // 더보기용 TOP30
-		            const fullBody = document.getElementById('rankingListFull');
-		            
-		            if(fullBody) {
-		            	renderTable('rankingListFull', data.slice(0, 30), true);
-		            } 
-		
-		            const now = new Date();
-		            const timeStr = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-		            const timeEl = document.getElementById('rankUpdateTime');
-		            
-		        	if(timeEl) {
-		        		timeEl.innerText = `(${timeStr} 기준, ${currentRankMode === 'rising' ? '급상승' : '급하락'})`;
-		        	}
-		        })
-		       
-		            /* 기존 코드
-		            if (timeEl) timeEl.innerText = `(${timeStr} 기준, ${currentRankMode === 'rising' ? '급상승' : '급하락'})`;
-		        })
-				*/	        
-		        .catch(err => console.error("랭킹 로딩 실패:", err));
-		}
-
-
-        // ---------------------------------------------------------
-        // 데이터 로딩 함수들
-        // ---------------------------------------------------------
+            const url = (currentRankMode === 'rising') ? '/api/rank/rising' : '/api/rank/falling';
+        
+            fetch(url)
+                .then(res => res.json())
+                .then(data => {
+                    if (!data || data.length === 0) return;
+                    
+                    // Top 5 (대시보드)
+                    renderTable('rankingList', data.slice(0, 5), true);
+                    
+                    // Top 30 (모달용 데이터 준비 - 열릴 때 렌더링하도록 저장해두거나 여기서 미리 렌더링)
+                    // 여기서는 미리 렌더링
+                    const fullBody = document.getElementById('rankingListFull');
+                    if(fullBody) renderTable('rankingListFull', data.slice(0, 30), true);
+        
+                    // 시간 표시
+                    const now = new Date();
+                    const timeStr = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+                    const timeEl = document.getElementById('rankUpdateTime');
+                    if(timeEl) {
+                        timeEl.innerText = `(${timeStr} 기준)`;
+                    }
+                })
+                .catch(err => console.error("랭킹 로딩 실패:", err));
+        }
         
         function loadWatchlist() {
             fetch('/api/watchlist')
@@ -266,21 +262,18 @@
                 .catch(err => console.error("관심종목 로딩 실패:", err));
         }
 
-        // ✅ [수정] 테이블 렌더링 함수 (클릭 이벤트 적용)
+        // 테이블 렌더링 (공통)
         function renderTable(elementId, data, showRank) {
             const tbody = document.getElementById(elementId);
+            if(!tbody) return;
             tbody.innerHTML = '';
 
             data.forEach((item, index) => {
                 const row = document.createElement('tr');
-                
-                // 마우스 올렸을 때 클릭 가능하다는 표시
                 row.style.cursor = "pointer"; 
-                
-                // 클릭 시 공통 함수 호출
                 row.onclick = () => moveToChart(item.code, item.name);
 
-                // 데이터 안전 처리
+                // 숫자 포맷팅
                 let rawPrice = String(item.price || "0").replace(/,/g, ''); 
                 let priceVal = parseFloat(rawPrice);
                 
@@ -290,9 +283,9 @@
                 const colorClass = rateVal > 0 ? 'up' : (rateVal < 0 ? 'down' : '');
                 const sign = rateVal > 0 ? '+' : '';
 
-                // 순위 표시 여부
-                const rankClass = index < 3 ? `rank-${index+1}` : '';
-                const rankHtml = showRank ? `<td><span class="rank-badge ${rankClass}">${index + 1}</span></td>` : '';
+                // 순위 뱃지
+                const rankHtml = showRank ? 
+                    `<td class="text-center"><span class="rank-badge ${index < 3 ? 'rank-'+(index+1) : ''}">${index + 1}</span></td>` : '';
 
                 row.innerHTML = `
                     ${rankHtml}
@@ -300,13 +293,138 @@
                         <span class="stock-name">${item.name}</span>
                         <span class="stock-code">${item.code}</span>
                     </td>
-                    <td style="text-align: right; font-weight: 500;">${priceVal.toLocaleString()}</td>
-                    <td style="text-align: right;" class="${colorClass}">
+                    <td class="text-right" style="font-weight: 500;">${priceVal.toLocaleString()}</td>
+                    <td class="text-right ${colorClass}">
                         ${sign}${rateVal.toFixed(2)}%
                     </td>
                 `;
                 tbody.appendChild(row);
             });
+        }
+
+        // 모드 전환
+        function setRankMode(mode) {
+            currentRankMode = mode;
+            const label = document.getElementById('rankModeLabel');
+            
+            // 버튼 스타일 활성화 (선택적)
+            document.getElementById('btnRising').style.fontWeight = mode === 'rising' ? 'bold' : 'normal';
+            document.getElementById('btnFalling').style.fontWeight = mode === 'falling' ? 'bold' : 'normal';
+
+            if (mode === 'rising') {
+                label.textContent = '급상승';
+                label.style.color = '#f55';
+            } else {
+                label.textContent = '급하락';
+                label.style.color = '#007bff';
+            }
+            loadRankByMode();
+        }
+
+        // ---------------------------------------------------------
+        // 모달 관련 기능
+        // ---------------------------------------------------------
+
+        // 1. 랭킹 더보기 모달
+        function openModal() {
+            const title = document.querySelector('#rankModal h3');
+            if (title) {
+                title.textContent = currentRankMode === 'rising' ? '🔥 실시간 급상승 Top 30' : '📉 실시간 급하락 Top 30';
+            }
+            // 스크롤 맨 위로
+            const body = document.querySelector('#rankModal .modal-body');
+            if(body) body.scrollTop = 0;
+            
+            openAnyModal('rankModal');
+        }
+        function closeModal() { closeAnyModal('rankModal'); }
+
+        // 2. 관심종목 관리 모달
+        function openManageModal() {
+            fetch('/api/watchlist')
+                .then(res => {
+                    if (res.status === 401) {
+                        alert("로그인이 필요합니다.");
+                        return null;
+                    }
+                    return res.json();
+                })
+                .then(data => {
+                    if (data) renderManageList(data);
+                    openAnyModal('manageModal');
+                })
+                .catch(err => console.error("관리 목록 로딩 실패:", err));
+        }
+        function closeManageModal() { closeAnyModal('manageModal'); }
+
+        // 관리 리스트 렌더링
+        function renderManageList(data) {
+            const tbody = document.getElementById('manageList');
+            tbody.innerHTML = '';
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; padding:20px; color:#999;">등록된 관심종목이 없습니다.</td></tr>';
+                return;
+            }
+
+            data.forEach(item => {
+                const row = document.createElement('tr');
+                // 관리 목록에서는 클릭 시 차트 이동 안 함 (삭제 버튼 오동작 방지)
+                row.innerHTML = `
+                    <td style="padding-left:20px;">
+                        <span class="stock-name" style="font-weight:bold;">${item.name}</span>
+                        <span class="stock-code" style="color:#888; font-size:12px; margin-left:5px;">${item.code}</span>
+                    </td>
+                    <td class="text-center">
+                        <button class="btn-delete-sm" onclick="deleteItem('${item.code}', '${item.name}')">삭제</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function deleteItem(code, name) {
+            if (!confirm(`'${name}' 종목을 삭제하시겠습니까?`)) return;
+            fetch(`/api/watchlist/${code}`, { method: 'DELETE' })
+            .then(res => {
+                if (res.ok) {
+                    openManageModal(); // 목록 갱신
+                    loadWatchlist();   // 메인화면 갱신
+                } else alert("삭제 실패");
+            });
+        }
+
+        // 모달 배경 클릭 닫기 이벤트 연결
+        document.getElementById('rankModal').addEventListener('click', e => { if(e.target===e.currentTarget) closeModal(); });
+        document.getElementById('manageModal').addEventListener('click', e => { if(e.target===e.currentTarget) closeManageModal(); });
+
+        // ---------------------------------------------------------
+        // 기타 기능 (지수, 검색, 웹소켓) - 기존 로직 유지
+        // ---------------------------------------------------------
+        
+        function loadInitialIndices() {
+             fetch('/api/market/indices') 
+                .then(res => res.json())
+                .then(data => {
+                    if(data.kospi) updateIndexUI("kospi", data.kospi.price, data.kospi.sign, data.kospi.change, data.kospi.rate);
+                    if(data.kosdaq) updateIndexUI("kosdaq", data.kosdaq.price, data.kosdaq.sign, data.kosdaq.change, data.kosdaq.rate);
+                })
+                .catch(err => console.warn("초기 지수 로딩 실패:", err));
+        }
+
+        function updateExchangeRate() {
+            fetch('/api/market/exchange-rate')
+                .then(res => res.text())
+                .then(text => {
+                    if (!text) return;
+                    const rate = JSON.parse(text);
+                    const el = document.getElementById('exchange-price');
+                    if (el && rate) {
+                        el.innerText = parseFloat(rate).toLocaleString() + " 원";
+                        el.className = "index-value flat"; 
+                    }
+                })
+                .catch(err => console.error("환율 실패:", err));
         }
 
         function setupSearch() {
@@ -326,10 +444,7 @@
                             list.forEach(stock => {
                                 const li = document.createElement('li');
                                 li.textContent = `${stock.name} (${stock.code})`;
-                                
-                                // ✅ [수정] 검색 결과 클릭 시에도 공통 함수 사용
                                 li.onclick = () => moveToChart(stock.code, stock.name);
-                                
                                 searchResult.appendChild(li);
                             });
                         } else {
@@ -337,69 +452,17 @@
                         }
                     });
             });
-            
-            document.addEventListener('click', function(e) {
-                if (!searchInput.contains(e.target) && !searchResult.contains(e.target)) {
-                    searchResult.style.display = 'none';
-                }
+            document.addEventListener('click', e => {
+                if (!searchInput.contains(e.target) && !searchResult.contains(e.target)) searchResult.style.display = 'none';
             });
         }
-        
-        function loadInitialIndices() {
-             fetch('/api/market/indices') 
-                .then(res => res.json())
-                .then(data => {
-                    if(data.kospi) updateIndexUI("kospi", data.kospi.price, data.kospi.sign, data.kospi.change, data.kospi.rate);
-                    if(data.kosdaq) updateIndexUI("kosdaq", data.kosdaq.price, data.kosdaq.sign, data.kosdaq.change, data.kosdaq.rate);
-                })
-                .catch(err => console.warn("초기 지수 로딩 실패:", err));
-        }
 
-        function updateExchangeRate() {
-            fetch('/api/market/exchange-rate')
-                .then(res => res.text())
-                .then(text => {
-                    if (!text) return;
-                    const rate = JSON.parse(text);
-                    if (rate) {
-                        const el = document.getElementById('exchange-price');
-                        if (el) {
-                            el.innerText = parseFloat(rate).toLocaleString() + " 원";
-                            el.className = "index-value flat"; 
-                        }
-                    }
-                })
-                .catch(err => console.error("환율 로딩 실패:", err));
-        }
-        
-        //모드 전환 함수
-        function setRankMode(mode) {
-    		currentRankMode = mode;
-
-    	// 라벨 텍스트/색 변경
-   			const label = document.getElementById('rankModeLabel');
-    		if (mode === 'rising') {
-        		label.textContent = '급상승';
-        		label.style.color = '#f55';
-    		} else {
-        		label.textContent = '급하락';
-        		label.style.color = '#007bff';
-    		}
-
-    		// 모드 바꿀 때마다 데이터 다시 로딩
-    		loadRankByMode();
-		}
-
-        
-        // --- WebSocket 관련 ---
         function connectWebSocket() {
             if (!WS_URL) return;
             ws = new WebSocket(WS_URL);
-
             ws.onopen = function() {
                 console.log("✅ WebSocket 연결됨");
-                sendSubscribe("0001"); 
-                sendSubscribe("1001");
+                sendSubscribe("0001"); sendSubscribe("1001");
             };
             ws.onmessage = function(evt) {
                 const rawData = evt.data;
@@ -446,10 +509,8 @@
                 colorClass = "down"; signIcon = "▼"; 
             }
             
-            // 천 단위 콤마 포맷팅 적용
             const formattedPrice = parseFloat(price).toLocaleString('ko-KR', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
+                minimumFractionDigits: 2, maximumFractionDigits: 2
             });
 
             priceEl.innerText = formattedPrice;
@@ -460,126 +521,15 @@
             priceEl.style.opacity = 0.5;
             setTimeout(() => priceEl.style.opacity = 1, 200);
         }
-        
-        function openManageModal() {
-            // 모달 표시
-            document.getElementById('manageModal').style.display = 'flex';
-            
-            // 목록 불러오기 (기존 loadWatchlist 로직 활용하되, 관리 전용 렌더링 함수 호출)
-            fetch('/api/watchlist')
-                .then(res => {
-                    if (res.status === 401) {
-                        alert("로그인이 필요한 서비스입니다.");
-                        closeManageModal();
-                        return null;
-                    }
-                    return res.json();
-                })
-                .then(data => {
-                    if (data) renderManageList(data);
-                })
-                .catch(err => console.error("관리 목록 로딩 실패:", err));
-        }
-        
-     	// 2. 관리 모달 닫기
-        function closeManageModal() {
-            document.getElementById('manageModal').style.display = 'none';
-        }
 
-        // 3. 관리용 리스트 렌더링 (삭제 버튼 포함)
-        function renderManageList(data) {
-            const tbody = document.getElementById('manageList');
-            tbody.innerHTML = '';
-
-            if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; padding:20px; color:#999;">등록된 관심종목이 없습니다.</td></tr>';
-                return;
-            }
-
-            data.forEach(item => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>
-                        <span class="stock-name">${item.name}</span>
-                        <span class="stock-code">${item.code}</span>
-                    </td>
-                    <td style="text-align: center;">
-                        <button class="btn-delete" onclick="deleteItem('${item.code}', '${item.name}')">삭제</button>
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
-        }
-
-        // 4. 삭제 API 호출
-        function deleteItem(code, name) {
-            if (!confirm(`'${name}' 종목을 삭제하시겠습니까?`)) return;
-
-            fetch(`/api/watchlist/${code}`, {
-                method: 'DELETE'
-            })
-            .then(res => {
-                if (res.ok) {
-                    // 성공 시 UI 갱신
-                    // 1. 모달 내 목록 다시 로딩
-                    openManageModal(); 
-                    // 2. 대시보드 메인 목록도 갱신
-                    loadWatchlist();   
-                } else {
-                    alert("삭제에 실패했습니다.");
-                }
-            })
-            .catch(err => console.error("삭제 오류:", err));
-        }
-
-        // 모달 배경 클릭 시 닫기 (이벤트 리스너 추가)
-        document.getElementById('manageModal').addEventListener('click', function(e) {
-            if (e.target === this) closeManageModal();
-        });
-        
-        function openModal() {
-        	const modal = document.getElementById('rankModal');
-            modal.style.display = 'flex';
-        	
-        	 const body = modal.querySelector('.modal-body');
-        	 if (body) {
-        	 	body.scrollTop = 0;
-        	 }
-        	
-            const title = document.querySelector('#rankModal h3');
-            if (title) {
-                title.textContent = currentRankMode === 'rising'
-                    ? '🔥 실시간 급상승 Top 30'
-                    : '📉 실시간 급하락 Top 30';
-            }
-            document.getElementById('rankModal').style.display = 'flex';
-        }
-
-        function closeModal() {
-            document.getElementById('rankModal').style.display = 'none';
-        }
-        
-        // 배경 클릭 시 닫기
-        document.getElementById('rankModal').addEventListener('click', function(e) {
-            if (e.target === this) closeModal();
-        });
-        
-     	// 장 운영 시간 체크 함수 (평일 09:00 ~ 15:40)
         function isMarketOpen() {
             const now = new Date();
-            const day = now.getDay(); // 0:일요일, 6:토요일
-            const hour = now.getHours();
-            const minute = now.getMinutes();
-            const time = hour * 100 + minute; // 예: 9시 30분 -> 930
-
-            // 1. 주말 체크
+            const day = now.getDay(); 
+            const time = now.getHours() * 100 + now.getMinutes();
             if (day === 0 || day === 6) return false;
-
-            // 2. 시간 체크 (09:00 ~ 15:40)
-            // 장 마감 후 종가 확정 시간 등을 고려하여 15:40까지 여유 있게 잡음
-            if (time >= 900 && time <= 1540) {
-                return true;
-            }
+            if (time >= 900 && time <= 1540) return true;
             return false;
         }
     </script>
+</body>
+</html>

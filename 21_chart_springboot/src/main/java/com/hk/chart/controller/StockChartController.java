@@ -167,18 +167,16 @@ public class StockChartController {
         return result;
     }
     
-    // 6. 실시간 급상승 랭킹 조회 API (DB 조회)
     @GetMapping("/api/rank/rising")
     @ResponseBody
     public List<RankingDto> getRisingRank() {
-        return marketService.getCachedRankingFromDB();
+        return marketService.getCachedRankingFromDB(0); // 0: 상승
     }
-    
- // 실시간 급하락 랭킹 조회 API (직접 API 호출 버전)
+
     @GetMapping("/api/rank/falling")
     @ResponseBody
     public List<RankingDto> getFallingRank() {
-        return marketService.getFallingRankingLive();
+        return marketService.getCachedRankingFromDB(1); // 1: 하락
     }
 
 }

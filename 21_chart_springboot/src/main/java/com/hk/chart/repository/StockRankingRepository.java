@@ -6,5 +6,5 @@ import java.util.List;
 
 public interface StockRankingRepository extends JpaRepository<StockRanking, Long> {
     // 순위대로 정렬해서 가져오기
-    List<StockRanking> findAllByOrderByRankingAsc();
+	List<StockRanking> findAllByRankingTypeOrderByRankingAsc(Integer rankingType);
 }
