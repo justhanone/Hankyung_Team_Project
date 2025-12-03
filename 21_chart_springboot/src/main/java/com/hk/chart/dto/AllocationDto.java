@@ -13,6 +13,7 @@ public class AllocationDto {
         private int periodMonths;
         private List<Asset> assets;
         private boolean rebalance;
+        private String benchmarkCode;
     }
 
     @Data
@@ -24,17 +25,26 @@ public class AllocationDto {
 
     @Data
     public static class Response {
-        // Return (수익)
-        private double totalReturn;  // 총 수익률
-        private double cagr;         // 연평균 수익률 (Annualized Return)
-        private long finalBalance;   // 최종 자산
-
-        // Risk (위험)
-        private double mdd;          // 최대 낙폭 (Max Drawdown)
-        private double volatility;   // 연간 변동성 (Standard Deviation) 
-        private double sharpeRatio;  // 샤프 지수 (위험 대비 수익) 
+        // Portfolio Metrics
+        private double totalReturn;
+        private double cagr;
+        private long finalBalance;
+        private double mdd;
+        private double volatility;
+        private double sharpeRatio;
         
-        private List<ChartPoint> equityCurve;
+        // Benchmark Metrics
+        private double bmTotalReturn;
+        private double bmCagr;
+        private long bmFinalBalance;
+        private double bmMdd;
+        private double bmVolatility;
+        private double bmSharpeRatio;
+
+        // Charts
+        private List<ChartPoint> equityCurve;    // 포트폴리오 곡선
+        private List<ChartPoint> bmEquityCurve;  // 벤치마크 곡선
+        
         private List<AssetResult> assetReturns;
     }
     

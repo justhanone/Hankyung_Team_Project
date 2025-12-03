@@ -512,206 +512,206 @@ public class KisMarketService {
         }
     }
 
-         //국내업종 현재지수 조회
-         // - 장 운영 중: 실시간 지수 제공
-         // - 장 마감 후: 종가 지수 제공 (FHKUP03500100 대신 FHPUP02100000 사용)
-        public IndexInfoDto getIndexInfo(String indexCode) {
-            String accessToken = authService.getAccessToken();
+     //국내업종 현재지수 조회
+     // - 장 운영 중: 실시간 지수 제공
+     // - 장 마감 후: 종가 지수 제공 (FHKUP03500100 대신 FHPUP02100000 사용)
+    public IndexInfoDto getIndexInfo(String indexCode) {
+        String accessToken = authService.getAccessToken();
 
-            try {
-                // 1. API 호출
-                // URL: /uapi/domestic-stock/v1/quotations/inquire-index-price
-                // TR_ID: FHPUP02100000 (장 마감 후에도 데이터 나옴)
+        try {
+            // 1. API 호출
+            // URL: /uapi/domestic-stock/v1/quotations/inquire-index-price
+            // TR_ID: FHPUP02100000 (장 마감 후에도 데이터 나옴)
+            String responseBody = kisWebClient.get()
+                .uri(uriBuilder -> uriBuilder
+                    .path("/uapi/domestic-stock/v1/quotations/inquire-index-price")
+                    .queryParam("FID_COND_MRKT_DIV_CODE", "U") // U: 업종
+                    .queryParam("FID_INPUT_ISCD", indexCode)    // 0001(코스피), 1001(코스닥)
+                    .build())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .header("appkey", kisApiConfig.getAppKey())
+                .header("appsecret", kisApiConfig.getAppSecret())
+                .header("tr_id", "FHPUP02100000") // ⭐️ 중요: 지수 전용 TR
+                .header("custtype", "P")
+                .retrieve()
+                .bodyToMono(String.class)
+                .block();
+
+            // 2. 결과 파싱
+            ObjectMapper mapper = new ObjectMapper();
+            Map<String, Object> responseMap = mapper.readValue(responseBody, Map.class);
+
+            // 3. 응답 검증 ('rt_cd'가 0이면 성공)
+            if (responseMap != null && "0".equals(responseMap.get("rt_cd"))) {
+                Map<String, String> output = (Map<String, String>) responseMap.get("output");
+                
+                if (output != null) {
+                    // ⭐️ 중요: API마다 필드명이 다름 (FHPUP02100000 기준 필드명 매핑)
+                    return IndexInfoDto.builder()
+                            .price(output.get("bstp_nmix_prpr"))  // 현재지수
+                            .sign(output.get("prdy_vrss_sign"))   // 대비 부호
+                            .change(output.get("bstp_nmix_prdy_vrss"))      // 전일 대비
+                            .rate(output.get("bstp_nmix_prdy_ctrt"))        // 등락률
+                            .build();
+                }
+            } else {
+                // 에러 발생 시 로그 출력 (디버깅용)
+                if (responseMap != null) {
+                    System.err.println(">>> [Index Error] Code: " + indexCode + ", Msg: " + responseMap.get("msg1"));
+                }
+            }
+
+        } catch (Exception e) {
+            System.err.println(">>> [Index Exception] " + e.getMessage());
+        }
+
+        // 4. 실패 시 기본값 반환 (화면 깨짐 방지)
+        return IndexInfoDto.builder()
+                .price("-")
+                .sign("3")
+                .change("0.00")
+                .rate("0.00")
+                .build();
+    }
+
+    /**
+     * ✅ [스케줄러] 매 15분마다 실행 - 급상승 & 급하락 모두 수집
+     */
+    @Scheduled(cron = "0 0/15 * * * *") 
+    @Transactional
+    public void scheduleRankingUpdate() {
+        log.info("⏰ [Scheduler] 실시간 랭킹 업데이트 시작...");
+        
+        // 1. 급상승(Rising) 데이터 수집
+        List<RankingDto> risingList = fetchRisingRankingFromApi();
+        if (risingList.isEmpty()) risingList = fetchMajorStocksFallback(); // 실패 시 폴백
+
+        // 2. 급하락(Falling) 데이터 수집
+        List<RankingDto> fallingList = fetchFallingRankingFromApi();
+        // 하락 폴백은 필요 시 구현 (보통 급상승 폴백만 있어도 됨)
+
+        // 3. DB 초기화 (전체 삭제)
+        rankingRepository.deleteAll();
+
+        List<StockRanking> entities = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+
+        // 4. 급상승 저장 (Type: 0)
+        for (RankingDto dto : risingList) {
+            entities.add(toEntity(dto, 0, now));
+        }
+
+        // 5. 급하락 저장 (Type: 1)
+        for (RankingDto dto : fallingList) {
+            entities.add(toEntity(dto, 1, now));
+        }
+
+        rankingRepository.saveAll(entities);
+        log.info("✅ [Scheduler] DB 랭킹 업데이트 완료 (상승: {}, 하락: {})", risingList.size(), fallingList.size());
+    }
+
+    /**
+     * [Fallback] API 키 권한 문제 등으로 랭킹 조회가 실패했을 때,
+     * 미리 정의된 주요 대장주들의 시세를 조회하여 랭킹을 생성하는 메서드
+     */
+    private List<RankingDto> fetchMajorStocksFallback() {
+        System.out.println(">>> [Fallback] 주요 종목 데이터로 랭킹을 생성합니다.");
+        
+        // 주요 대장주 코드 리스트 (삼성전자, SK하이닉스, LG에너지솔루션, 삼성바이오로직스, 현대차, 기아, 셀트리온, POSCO홀딩스, NAVER, 카카오)
+        String[] majorCodes = {"005930", "000660", "373220", "207940", "005380", "000270", "068270", "005490", "035420", "035720"};
+        List<RankingDto> fallbackList = new ArrayList<>();
+        String accessToken = authService.getAccessToken();
+
+        try {
+            for (String code : majorCodes) {
+                // 각 종목의 현재가 조회 (FHKST01010100 - 실전/모의 공통 TR)
                 String responseBody = kisWebClient.get()
                     .uri(uriBuilder -> uriBuilder
-                        .path("/uapi/domestic-stock/v1/quotations/inquire-index-price")
-                        .queryParam("FID_COND_MRKT_DIV_CODE", "U") // U: 업종
-                        .queryParam("FID_INPUT_ISCD", indexCode)    // 0001(코스피), 1001(코스닥)
+                        .path("/uapi/domestic-stock/v1/quotations/inquire-price")
+                        .queryParam("FID_COND_MRKT_DIV_CODE", "J")
+                        .queryParam("FID_INPUT_ISCD", code)
                         .build())
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                     .header("appkey", kisApiConfig.getAppKey())
                     .header("appsecret", kisApiConfig.getAppSecret())
-                    .header("tr_id", "FHPUP02100000") // ⭐️ 중요: 지수 전용 TR
+                    .header("tr_id", "FHKST01010100") // ⭐️ 중요: 공통 TR 사용
                     .header("custtype", "P")
                     .retrieve()
                     .bodyToMono(String.class)
                     .block();
-
-                // 2. 결과 파싱
+                
+                // 파싱해서 리스트에 추가
                 ObjectMapper mapper = new ObjectMapper();
-                Map<String, Object> responseMap = mapper.readValue(responseBody, Map.class);
-
-                // 3. 응답 검증 ('rt_cd'가 0이면 성공)
-                if (responseMap != null && "0".equals(responseMap.get("rt_cd"))) {
-                    Map<String, String> output = (Map<String, String>) responseMap.get("output");
-                    
-                    if (output != null) {
-                        // ⭐️ 중요: API마다 필드명이 다름 (FHPUP02100000 기준 필드명 매핑)
-                        return IndexInfoDto.builder()
-                                .price(output.get("bstp_nmix_prpr"))  // 현재지수
-                                .sign(output.get("prdy_vrss_sign"))   // 대비 부호
-                                .change(output.get("bstp_nmix_prdy_vrss"))      // 전일 대비
-                                .rate(output.get("bstp_nmix_prdy_ctrt"))        // 등락률
-                                .build();
-                    }
-                } else {
-                    // 에러 발생 시 로그 출력 (디버깅용)
-                    if (responseMap != null) {
-                        System.err.println(">>> [Index Error] Code: " + indexCode + ", Msg: " + responseMap.get("msg1"));
-                    }
-                }
-
-            } catch (Exception e) {
-                System.err.println(">>> [Index Exception] " + e.getMessage());
-            }
-
-            // 4. 실패 시 기본값 반환 (화면 깨짐 방지)
-            return IndexInfoDto.builder()
-                    .price("-")
-                    .sign("3")
-                    .change("0.00")
-                    .rate("0.00")
-                    .build();
-        }
-    
-        /**
-         * ✅ [스케줄러] 매 15분마다 실행 - 급상승 & 급하락 모두 수집
-         */
-        @Scheduled(cron = "0 0/15 * * * *") 
-        @Transactional
-        public void scheduleRankingUpdate() {
-            log.info("⏰ [Scheduler] 실시간 랭킹 업데이트 시작...");
-            
-            // 1. 급상승(Rising) 데이터 수집
-            List<RankingDto> risingList = fetchRisingRankingFromApi();
-            if (risingList.isEmpty()) risingList = fetchMajorStocksFallback(); // 실패 시 폴백
-
-            // 2. 급하락(Falling) 데이터 수집
-            List<RankingDto> fallingList = fetchFallingRankingFromApi();
-            // 하락 폴백은 필요 시 구현 (보통 급상승 폴백만 있어도 됨)
-
-            // 3. DB 초기화 (전체 삭제)
-            rankingRepository.deleteAll();
-
-            List<StockRanking> entities = new ArrayList<>();
-            LocalDateTime now = LocalDateTime.now();
-
-            // 4. 급상승 저장 (Type: 0)
-            for (RankingDto dto : risingList) {
-                entities.add(toEntity(dto, 0, now));
-            }
-
-            // 5. 급하락 저장 (Type: 1)
-            for (RankingDto dto : fallingList) {
-                entities.add(toEntity(dto, 1, now));
-            }
-
-            rankingRepository.saveAll(entities);
-            log.info("✅ [Scheduler] DB 랭킹 업데이트 완료 (상승: {}, 하락: {})", risingList.size(), fallingList.size());
-        }
-
-        /**
-         * [Fallback] API 키 권한 문제 등으로 랭킹 조회가 실패했을 때,
-         * 미리 정의된 주요 대장주들의 시세를 조회하여 랭킹을 생성하는 메서드
-         */
-        private List<RankingDto> fetchMajorStocksFallback() {
-            System.out.println(">>> [Fallback] 주요 종목 데이터로 랭킹을 생성합니다.");
-            
-            // 주요 대장주 코드 리스트 (삼성전자, SK하이닉스, LG에너지솔루션, 삼성바이오로직스, 현대차, 기아, 셀트리온, POSCO홀딩스, NAVER, 카카오)
-            String[] majorCodes = {"005930", "000660", "373220", "207940", "005380", "000270", "068270", "005490", "035420", "035720"};
-            List<RankingDto> fallbackList = new ArrayList<>();
-            String accessToken = authService.getAccessToken();
-
-            try {
-                for (String code : majorCodes) {
-                    // 각 종목의 현재가 조회 (FHKST01010100 - 실전/모의 공통 TR)
-                    String responseBody = kisWebClient.get()
-                        .uri(uriBuilder -> uriBuilder
-                            .path("/uapi/domestic-stock/v1/quotations/inquire-price")
-                            .queryParam("FID_COND_MRKT_DIV_CODE", "J")
-                            .queryParam("FID_INPUT_ISCD", code)
-                            .build())
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
-                        .header("appkey", kisApiConfig.getAppKey())
-                        .header("appsecret", kisApiConfig.getAppSecret())
-                        .header("tr_id", "FHKST01010100") // ⭐️ 중요: 공통 TR 사용
-                        .header("custtype", "P")
-                        .retrieve()
-                        .bodyToMono(String.class)
-                        .block();
-                    
-                    // 파싱해서 리스트에 추가
-                    ObjectMapper mapper = new ObjectMapper();
-                    Map<String, Object> map = mapper.readValue(responseBody, Map.class);
-                    Map<String, String> out = (Map<String, String>) map.get("output");
-                    
-                    if (out != null) {
-                        fallbackList.add(RankingDto.builder()
-                            .code(out.get("stck_shrn_iscd"))
-                            .name(out.get("hts_kor_isnm")) // 종목명 
-                            .price(out.get("stck_prpr"))
-                            .change(out.get("prdy_vrss"))
-                            .rate(out.get("prdy_ctrt"))
-                            .build());
-                    }
-                    
-                    // API 부하 방지용 짧은 대기
-                    try { Thread.sleep(50); } catch (InterruptedException e) {}
+                Map<String, Object> map = mapper.readValue(responseBody, Map.class);
+                Map<String, String> out = (Map<String, String>) map.get("output");
+                
+                if (out != null) {
+                    fallbackList.add(RankingDto.builder()
+                        .code(out.get("stck_shrn_iscd"))
+                        .name(out.get("hts_kor_isnm")) // 종목명 
+                        .price(out.get("stck_prpr"))
+                        .change(out.get("prdy_vrss"))
+                        .rate(out.get("prdy_ctrt"))
+                        .build());
                 }
                 
-                // 등락률 순으로 정렬 (내림차순: 많이 오른 순서)
-                fallbackList.sort((a, b) -> Double.compare(Double.parseDouble(b.getRate()), Double.parseDouble(a.getRate())));
-                
-                // 순위 번호(rank) 매기기
-                for (int i = 0; i < fallbackList.size(); i++) {
-                    fallbackList.get(i).setRank(String.valueOf(i + 1));
-                }
-                
-            } catch (Exception e) {
-                System.err.println(">>> [Fallback] 대체 로직 중 오류: " + e.getMessage());
+                // API 부하 방지용 짧은 대기
+                try { Thread.sleep(50); } catch (InterruptedException e) {}
             }
-
-            return fallbackList;
-        }
-
-		// Entity 변환 헬퍼 메서드
-        private StockRanking toEntity(RankingDto dto, int type, LocalDateTime time) {
-            return StockRanking.builder()
-                    .ranking(Integer.parseInt(dto.getRank()))
-                    .stockCode(dto.getCode())
-                    .stockName(dto.getName())
-                    .price(dto.getPrice())
-                    .changePrice(dto.getChange())
-                    .changeRate(dto.getRate())
-                    .rankingType(type) // 0:상승, 1:하락
-                    .updatedAt(time)
-                    .build();
-        }
-
-        /**
-         * ✅ [Front용] DB 조회 메서드 (타입 파라미터 추가)
-         * type: 0(상승), 1(하락)
-         */
-        public List<RankingDto> getCachedRankingFromDB(int type) {
-            List<StockRanking> entities = rankingRepository.findAllByRankingTypeOrderByRankingAsc(type);
             
-            if (entities.isEmpty()) {
-                log.info("DB 비어있음 -> 즉시 업데이트 수행");
-                scheduleRankingUpdate();
-                entities = rankingRepository.findAllByRankingTypeOrderByRankingAsc(type);
+            // 등락률 순으로 정렬 (내림차순: 많이 오른 순서)
+            fallbackList.sort((a, b) -> Double.compare(Double.parseDouble(b.getRate()), Double.parseDouble(a.getRate())));
+            
+            // 순위 번호(rank) 매기기
+            for (int i = 0; i < fallbackList.size(); i++) {
+                fallbackList.get(i).setRank(String.valueOf(i + 1));
             }
-
-            return entities.stream()
-                    .map(e -> RankingDto.builder()
-                            .rank(String.valueOf(e.getRanking()))
-                            .code(e.getStockCode())
-                            .name(e.getStockName())
-                            .price(e.getPrice())
-                            .change(e.getChangePrice())
-                            .rate(e.getChangeRate())
-                            .build())
-                    .collect(Collectors.toList());
+            
+        } catch (Exception e) {
+            System.err.println(">>> [Fallback] 대체 로직 중 오류: " + e.getMessage());
         }
+
+        return fallbackList;
+    }
+
+	// Entity 변환 헬퍼 메서드
+    private StockRanking toEntity(RankingDto dto, int type, LocalDateTime time) {
+        return StockRanking.builder()
+                .ranking(Integer.parseInt(dto.getRank()))
+                .stockCode(dto.getCode())
+                .stockName(dto.getName())
+                .price(dto.getPrice())
+                .changePrice(dto.getChange())
+                .changeRate(dto.getRate())
+                .rankingType(type) // 0:상승, 1:하락
+                .updatedAt(time)
+                .build();
+    }
+
+    /**
+     * ✅ [Front용] DB 조회 메서드 (타입 파라미터 추가)
+     * type: 0(상승), 1(하락)
+     */
+    public List<RankingDto> getCachedRankingFromDB(int type) {
+        List<StockRanking> entities = rankingRepository.findAllByRankingTypeOrderByRankingAsc(type);
+        
+        if (entities.isEmpty()) {
+            log.info("DB 비어있음 -> 즉시 업데이트 수행");
+            scheduleRankingUpdate();
+            entities = rankingRepository.findAllByRankingTypeOrderByRankingAsc(type);
+        }
+
+        return entities.stream()
+                .map(e -> RankingDto.builder()
+                        .rank(String.valueOf(e.getRanking()))
+                        .code(e.getStockCode())
+                        .name(e.getStockName())
+                        .price(e.getPrice())
+                        .change(e.getChangePrice())
+                        .rate(e.getChangeRate())
+                        .build())
+                .collect(Collectors.toList());
+    }
 
     /**
      * (내부용) 실제 API 호출 로직 - 디버깅 강화 버전

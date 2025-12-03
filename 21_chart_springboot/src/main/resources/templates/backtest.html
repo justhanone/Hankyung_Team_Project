@@ -8,7 +8,7 @@
      <link type="text/css" th:href="@{/css/backtest.css}" rel="stylesheet">
     <link rel="icon" type="image/png" th:href="@{/images/logo.png}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 </head>
 <body>
     
@@ -18,10 +18,16 @@
             <nav class="nav-menu">
                 <a href="/">대시보드</a>
                 <a href="/chart">차트 분석</a>
-                <a href="/backtest">백테스트</a>
-                <a href="/allocation" class="active">자산배분</a>
+                <a href="backtest">백테스트</a>
                 <a href="/portfolio">포트폴리오</a>
             </nav>
+            <div class="user-actions">
+                <button th:if="${#authentication.name == 'anonymousUser'}" class="btn-login" onclick="location.href='/user/login'">로그인</button>
+                <th:block th:if="${#authentication.name != 'anonymousUser'}">
+                    <span class="user-info" th:text="${#authentication.name} + '님'"></span>
+                    <button class="btn-logout" onclick="location.href='/user/logout'">로그아웃</button>
+                </th:block>
+            </div>
         </div>
     </header>
 
@@ -33,21 +39,31 @@
                 <button class="btn-history" onclick="openHistoryModal()">🕒 지난 기록</button>
             </div>
             
-            <div style="margin-bottom: 20px;">
-                <label style="display:block; margin-bottom:5px; font-weight:600; font-size:14px;">초기 투자금 (원)</label>
-                <input type="number" id="seedMoney" value="10000000" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box;">
+            <div class="form-group" style="margin-bottom:15px;">
+                <label class="form-label">초기 투자금 (원)</label>
+                <input type="number" id="seedMoney" value="10000000" class="asset-input" style="width:100%;">
             </div>
 
-            <div style="margin-bottom: 20px;">
-                <label style="display:block; margin-bottom:5px; font-weight:600; font-size:14px;">분석 기간</label>
-                <select id="period" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px;">
+            <div class="form-group" style="margin-bottom:15px;">
+                <label class="form-label">분석 기간</label>
+                <select id="period" class="asset-input" style="width:100%;">
                     <option value="12">최근 1년</option>
                     <option value="36">최근 3년</option>
                     <option value="60">최근 5년</option>
                 </select>
             </div>
 
-            <label style="display:block; margin-bottom:10px; font-weight:600; font-size:14px;">자산 구성 (비중 %)</label>
+            <div class="form-group" style="margin-bottom:20px;">
+                <label class="form-label">벤치마크 (비교 대상)</label>
+                <select id="benchmark" class="asset-input" style="width:100%;">
+                    <option value="">선택 안함</option>
+                    <option value="069500">KOSPI 200 (KODEX 200)</option>
+                    <option value="229200">KOSDAQ 150 (KODEX 코스닥150)</option>
+                    <option value="005930">삼성전자 (개별종목 비교)</option>
+                </select>
+            </div>
+
+            <label class="form-label">자산 구성 (비중 %)</label>
             <div id="assetList"></div>
             
             <button class="btn-add-asset" onclick="openSearchModal()">+ 종목 검색 및 추가</button>
@@ -61,10 +77,10 @@
 
         <div class="panel">
             <h3 style="border-bottom:2px solid #333; padding-bottom:10px; margin-bottom:20px;">📊 Highlights</h3>
-            
-            <div class="highlight-section" style="display:flex; flex-direction:column; align-items:center;">
-                    <div class="hs-title" style="width:100%; color:#333;">Allocation (비중)</div>
-                    <div style="width: 180px; height: 180px; position:relative;">
+           
+            <div class="highlight-section" style="display:flex; flex-direction:column; align-items:center; margin-bottom:20px;">
+                    <div class="hs-title" style="width:100%; color:#333;">Allocation</div>
+                    <div style="width: 100%; height: 220px; position:relative;">
                         <canvas id="donutChart"></canvas>
                     </div>
             </div>
@@ -72,20 +88,30 @@
             <div class="highlights-container">
                 <div class="highlight-section">
                     <div class="hs-title" style="color:#2563eb;">Return (수익)</div>
-                    <div class="stat-row"><span class="stat-label">Final Balance</span><span class="stat-value" id="resFinal">0 원</span></div>
-                    <div class="stat-row"><span class="stat-label">Total Return</span><span class="stat-value" id="resTotal">0.00%</span></div>
-                    <div class="stat-row"><span class="stat-label">CAGR <span class="stat-sub">(연평균)</span></span><span class="stat-value" id="resCagr">0.00%</span></div>
+                    <table class="comp-table">
+                        <thead><tr><th>Metric</th><th class="pf-color">Portfolio</th><th class="bm-color">Benchmark</th></tr></thead>
+                        <tbody>
+                            <tr><td>Final Balance</td><td id="resFinal">0</td><td id="bmFinal">-</td></tr>
+                            <tr><td>Total Return</td><td id="resTotal">0.00%</td><td id="bmTotal">-</td></tr>
+                            <tr><td>CAGR</td><td id="resCagr">0.00%</td><td id="bmCagr">-</td></tr>
+                        </tbody>
+                    </table>
                 </div>
 
                 <div class="highlight-section">
                     <div class="hs-title" style="color:#e11d48;">Risk (위험)</div>
-                    <div class="stat-row"><span class="stat-label">Stdev <span class="stat-sub">(변동성)</span></span><span class="stat-value" id="resVol">0.00%</span></div>
-                    <div class="stat-row"><span class="stat-label">Max Drawdown</span><span class="stat-value" id="resMdd" style="color:#2563eb;">0.00%</span></div>
-                    <div class="stat-row"><span class="stat-label">Sharpe Ratio</span><span class="stat-value" id="resSharpe">0.00</span></div>
+                    <table class="comp-table">
+                        <thead><tr><th>Metric</th><th class="pf-color">Portfolio</th><th class="bm-color">Benchmark</th></tr></thead>
+                        <tbody>
+                            <tr><td>Stdev</td><td id="resVol">0.00%</td><td id="bmVol">-</td></tr>
+                            <tr><td>Max Drawdown</td><td id="resMdd">0.00%</td><td id="bmMdd">-</td></tr>
+                            <tr><td>Sharpe Ratio</td><td id="resSharpe">0.00</td><td id="bmSharpe">-</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
-            <h4 style="margin-bottom:15px;">📈 Portfolio Growth</h4>
+            <h4 style="margin-bottom:15px;">📈 Growth Chart (Portfolio vs Benchmark)</h4>
             <div style="height: 350px;">
                 <canvas id="allocChart"></canvas>
             </div>
@@ -129,8 +155,8 @@
     </div>
 
     <script>
-        let lineChart = null; // 수익률 곡선 차트
-        let donutChart = null; // 도넛 차트
+    	let chartInstance = null; // 수익률 곡선 차트
+        let donutChartInstance = null; // 도넛 차트
 
         document.addEventListener('DOMContentLoaded', () => {
             addAssetToTable('삼성전자', '005930', 50);
@@ -200,6 +226,7 @@
         function runAnalysis() {
             const seed = document.getElementById('seedMoney').value;
             const period = document.getElementById('period').value;
+            const benchmark = document.getElementById('benchmark').value;
             const rows = document.querySelectorAll('.asset-row');
             
             const assets = [];
@@ -219,7 +246,7 @@
             if(assets.length === 0) { alert("종목을 추가해주세요."); return; }
             if(weightSum !== 100) { alert("비중 합계는 100%여야 합니다."); return; }
 
-            const req = { seedMoney: seed, periodMonths: period, assets: assets };
+            const req = { seedMoney: seed, periodMonths: period, assets: assets, benchmarkCode: benchmark };
             document.querySelector('.btn-submit').innerText = "분석 중...";
 
             fetch('/api/allocation/run', {
@@ -237,55 +264,72 @@
         }
 
         function renderResult(data) {
-            document.getElementById('resFinal').innerText = Math.round(data.finalBalance).toLocaleString() + " 원";
-            
-            const totalEl = document.getElementById('resTotal');
-            totalEl.innerText = data.totalReturn + "%";
-            totalEl.className = "stat-value " + (data.totalReturn > 0 ? "up" : "down");
+            // Portfolio 값 채우기
+            document.getElementById('resFinal').innerText = Math.round(data.finalBalance).toLocaleString();
+            document.getElementById('resTotal').innerText = data.totalReturn + "%";
             document.getElementById('resCagr').innerText = data.cagr + "%";
-
             document.getElementById('resVol').innerText = data.volatility + "%";
             document.getElementById('resMdd').innerText = data.mdd + "%";
             document.getElementById('resSharpe').innerText = data.sharpeRatio;
 
-            // Line Chart
-            const ctx = document.getElementById('allocChart').getContext('2d');
-            if(lineChart) lineChart.destroy();
+            // Benchmark 값 채우기 (데이터 없으면 '-')
+            const hasBm = data.bmFinalBalance > 0;
+            document.getElementById('bmFinal').innerText = hasBm ? Math.round(data.bmFinalBalance).toLocaleString() : '-';
+            document.getElementById('bmTotal').innerText = hasBm ? data.bmTotalReturn + "%" : '-';
+            document.getElementById('bmCagr').innerText = hasBm ? data.bmCagr + "%" : '-';
+            document.getElementById('bmVol').innerText = hasBm ? data.bmVolatility + "%" : '-';
+            document.getElementById('bmMdd').innerText = hasBm ? data.bmMdd + "%" : '-';
+            document.getElementById('bmSharpe').innerText = hasBm ? data.bmSharpeRatio : '-';
 
-            lineChart = new Chart(ctx, {
+            // Chart 그리기 (데이터셋 2개)
+            const ctx = document.getElementById('allocChart').getContext('2d');
+            if(chartInstance) chartInstance.destroy();
+
+            const datasets = [{
+                label: 'Portfolio',
+                data: data.equityCurve.map(d => d.value),
+                borderColor: '#2563eb', // 파랑
+                backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                fill: true, pointRadius: 0, borderWidth: 2
+            }];
+
+            // 벤치마크 데이터가 있으면 차트에 추가
+            if (hasBm && data.bmEquityCurve) {
+                datasets.push({
+                    label: 'Benchmark',
+                    data: data.bmEquityCurve.map(d => d.value),
+                    borderColor: '#e11d48', // 빨강
+                    borderDash: [5, 5], // 점선
+                    backgroundColor: 'transparent',
+                    fill: false, pointRadius: 0, borderWidth: 2
+                });
+            }
+
+            chartInstance = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: data.equityCurve.map(d => d.date),
-                    datasets: [{
-                        label: 'Portfolio Balance',
-                        data: data.equityCurve.map(d => d.value),
-                        borderColor: '#2563eb',
-                        backgroundColor: 'rgba(37, 99, 235, 0.1)',
-                        fill: true, pointRadius: 0, borderWidth: 2, tension: 0.1
-                    }]
+                    datasets: datasets
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
                     interaction: { mode: 'index', intersect: false },
-                    plugins: { 
-                        tooltip: { callbacks: { label: (ctx) => ctx.raw.toLocaleString() + " 원" } },
-                        legend: { display: false }
-                    },
+                    plugins: { tooltip: { callbacks: { label: (ctx) => ctx.dataset.label + ": " + Number(ctx.raw).toLocaleString() + " 원" } } },
                     scales: { x: { grid: { display: false } }, y: { beginAtZero: false } }
                 }
             });
         }
 
-        // ✅ [NEW] 도넛 차트 업데이트 함수
+        // 도넛 차트 업데이트 함수
         function updateDonutChart(assets) {
             const ctx = document.getElementById('donutChart').getContext('2d');
-            if(donutChart) donutChart.destroy();
+            if(donutChartInstance) donutChartInstance.destroy();
 
-            // 색상 팔레트
             const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#6366f1'];
 
-            donutChart = new Chart(ctx, {
+            donutChartInstance = new Chart(ctx, {
                 type: 'doughnut',
+                plugins: [ChartDataLabels], // 플러그인 활성화
                 data: {
                     labels: assets.map(a => a.name),
                     datasets: [{
@@ -298,10 +342,21 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { display: false }, // 공간 절약을 위해 범례 숨김 (툴팁으로 확인)
+                        legend: { 
+                            display: true, 
+                            position: 'right', // 범례 하단 배치
+                            align: 'start',
+                            labels: { boxWidth: 10, font: { size: 11 }, padding: 10 }
+                        },
+                        datalabels: {
+                            color: '#fff',
+                            font: { weight: 'bold', size: 12 },
+                            formatter: (value) => value >= 5 ? value + '%' : '' // 5% 미만은 숨김
+                        },
                         tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${ctx.raw}%` } }
                     },
-                    cutout: '65%' // 도넛 두께 조절
+                    cutout: '60%',
+                    layout: { padding: 10 }
                 }
             });
         }

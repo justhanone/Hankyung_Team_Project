@@ -52,3 +52,10 @@
 .history-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .history-table th { background: #f8f9fa; padding: 12px; text-align: left; position: sticky; top: 0; }
 .history-table td { padding: 12px; border-bottom: 1px solid #eee; }
+
+.comp-table { width: 100%; font-size: 14px; border-collapse: collapse; margin-bottom: 20px; }
+.comp-table th { text-align: left; padding: 8px; color: #666; font-weight: normal; }
+.comp-table td { text-align: right; padding: 8px; font-weight: bold; color: #333; }
+.comp-header { border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 5px; font-weight: bold; color: #333; }
+.pf-color { color: #2563eb; } /* 파랑 */
+.bm-color { color: #e11d48; } /* 빨강 (벤치마크) */

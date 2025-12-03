@@ -38,47 +38,91 @@ public class AllocationService {
      */
     @Transactional
     public AllocationDto.Response analyze(AllocationDto.Request req, String username) {
+        
+        // 1. 포트폴리오 분석 (기존 로직)
+        AnalysisResult pfResult = calculatePortfolio(req.getAssets(), req.getSeedMoney(), req.getPeriodMonths());
+        
+        // 2. 벤치마크 분석 (신규 로직)
+        AnalysisResult bmResult = null;
+        if (req.getBenchmarkCode() != null && !req.getBenchmarkCode().isEmpty()) {
+            // 벤치마크는 비중 100%짜리 단일 종목 포트폴리오처럼 취급
+            List<AllocationDto.Asset> bmAssets = List.of(createAsset(req.getBenchmarkCode(), 100));
+            try {
+                bmResult = calculatePortfolio(bmAssets, req.getSeedMoney(), req.getPeriodMonths());
+            } catch (Exception e) {
+                System.err.println("벤치마크 분석 실패: " + e.getMessage());
+            }
+        }
+
+        // 3. 응답 생성
+        AllocationDto.Response res = new AllocationDto.Response();
+        
+        // Portfolio 결과 매핑
+        res.setFinalBalance(pfResult.finalBalance);
+        res.setTotalReturn(pfResult.totalReturn);
+        res.setCagr(pfResult.cagr);
+        res.setMdd(pfResult.mdd);
+        res.setVolatility(pfResult.volatility);
+        res.setSharpeRatio(pfResult.sharpeRatio);
+        res.setEquityCurve(pfResult.curve);
+
+        // Benchmark 결과 매핑
+        if (bmResult != null) {
+            res.setBmFinalBalance(bmResult.finalBalance);
+            res.setBmTotalReturn(bmResult.totalReturn);
+            res.setBmCagr(bmResult.cagr);
+            res.setBmMdd(bmResult.mdd);
+            res.setBmVolatility(bmResult.volatility);
+            res.setBmSharpeRatio(bmResult.sharpeRatio);
+            res.setBmEquityCurve(bmResult.curve);
+        }
+
+        // 4. 이력 저장 (로그인 시)
+        if (username != null && !username.equals("anonymousUser")) {
+            saveHistory(req, res, username);
+        }
+        
+        return res;
+    }
+
+    // --- 내부 분석 로직 (재사용 가능하게 분리) ---
+    
+    private AnalysisResult calculatePortfolio(List<AllocationDto.Asset> assets, long seedMoney, int periodMonths) {
         // 1. 데이터 수집
         Map<String, List<StockCandle>> dataMap = new HashMap<>();
-        int daysNeeded = req.getPeriodMonths() * 30 + 30; // 여유 있게 조회
+        int daysNeeded = periodMonths * 30 + 60;
 
-        for (AllocationDto.Asset asset : req.getAssets()) {
+        for (AllocationDto.Asset asset : assets) {
             List<StockCandle> candles = candleRepository.findRecentCandles(asset.getCode(), daysNeeded);
-            if (candles == null || candles.isEmpty()) {
-                throw new RuntimeException("데이터가 부족합니다: " + asset.getName());
-            }
-            Collections.reverse(candles); // 과거 -> 현재 순 정렬
+            if (candles == null || candles.isEmpty()) throw new RuntimeException("데이터 부족: " + asset.getCode());
+            Collections.reverse(candles);
             dataMap.put(asset.getCode(), candles);
         }
 
-        // 2. 공통 시작일 찾기
+        // 2. 공통 시작일
         String startDate = findCommonStartDate(dataMap);
-        if (startDate == null) throw new RuntimeException("데이터 기간이 겹치지 않거나 부족합니다.");
+        if (startDate == null) throw new RuntimeException("기간 불일치");
 
-        // 3. 시뮬레이션 초기화
-        long currentTotal = req.getSeedMoney();
+        // 3. 시뮬레이션
+        long currentTotal = seedMoney;
         double peak = currentTotal;
         double maxDrawdown = 0.0;
-
         List<AllocationDto.ChartPoint> curve = new ArrayList<>();
-        Map<String, Double> shares = new HashMap<>(); // 종목별 보유 수량(소수점 포함)
+        Map<String, Double> shares = new HashMap<>();
 
-        // 초기 매수 (비중대로 분배)
-        for (AllocationDto.Asset asset : req.getAssets()) {
-            List<StockCandle> list = dataMap.get(asset.getCode());
-            StockCandle firstDay = findCandleByDate(list, startDate);
-            
-            if (firstDay != null) {
-                double allocatedMoney = req.getSeedMoney() * (asset.getWeight() / 100.0);
-                shares.put(asset.getCode(), allocatedMoney / firstDay.getClose());
+        // 초기 매수
+        for (AllocationDto.Asset asset : assets) {
+            StockCandle first = findCandleByDate(dataMap.get(asset.getCode()), startDate);
+            if (first != null) {
+                double allocated = seedMoney * (asset.getWeight() / 100.0);
+                shares.put(asset.getCode(), allocated / first.getClose());
             }
         }
 
-        // 4. 일별 가치 계산 Loop
+        // 일별 루프
         List<Double> dailyReturns = new ArrayList<>();
         long prevTotal = currentTotal;
-
-        // 가장 데이터가 많은 종목 기준으로 날짜 순회
+        
         List<String> allDates = dataMap.values().iterator().next().stream()
                 .map(StockCandle::getDate)
                 .filter(d -> d.compareTo(startDate) >= 0)
@@ -86,82 +130,74 @@ public class AllocationService {
 
         for (String date : allDates) {
             long dailyValue = 0;
-            boolean isDataComplete = true;
+            boolean complete = true;
             
-            for (AllocationDto.Asset asset : req.getAssets()) {
-                StockCandle candle = findCandleByDate(dataMap.get(asset.getCode()), date);
-                if (candle != null) {
-                    dailyValue += (long)(shares.get(asset.getCode()) * candle.getClose());
-                } else {
-                    isDataComplete = false; // 데이터가 하나라도 없으면 그 날은 스킵하거나 전일값 사용
-                }
+            for (AllocationDto.Asset asset : assets) {
+                StockCandle c = findCandleByDate(dataMap.get(asset.getCode()), date);
+                if (c != null) dailyValue += (long)(shares.get(asset.getCode()) * c.getClose());
+                else complete = false;
             }
-            
-            if (isDataComplete && dailyValue > 0) {
-                // MDD 갱신
+
+            if (complete && dailyValue > 0) {
                 if (dailyValue > peak) peak = dailyValue;
                 double dd = (peak - dailyValue) / peak * 100;
                 if (dd > maxDrawdown) maxDrawdown = dd;
 
-                // 차트 데이터 추가
                 curve.add(newDto(date, dailyValue));
-                
-                // 일간 수익률 기록 (변동성 계산용)
+
                 if (prevTotal > 0 && !date.equals(startDate)) {
-                    double dailyRate = (double)(dailyValue - prevTotal) / prevTotal;
-                    dailyReturns.add(dailyRate);
+                    dailyReturns.add((double)(dailyValue - prevTotal) / prevTotal);
                 }
                 prevTotal = dailyValue;
                 currentTotal = dailyValue;
             }
         }
 
-        // 5. 결과 생성 (Return & Risk)
-        AllocationDto.Response res = new AllocationDto.Response();
-        res.setFinalBalance(currentTotal);
-        res.setMdd(Math.round(maxDrawdown * 100) / 100.0);
-        res.setEquityCurve(curve);
-        
-        // 수익률 계산
-        double totalReturn = ((double)(currentTotal - req.getSeedMoney()) / req.getSeedMoney()) * 100;
-        res.setTotalReturn(Math.round(totalReturn * 100) / 100.0);
-        
-        // CAGR (연평균 수익률)
-        double years = req.getPeriodMonths() / 12.0;
-        if(years < 1) years = 1; 
-        double cagr = (Math.pow((double)currentTotal / req.getSeedMoney(), 1.0 / years) - 1) * 100;
-        res.setCagr(Math.round(cagr * 100) / 100.0);
+        // 지표 계산
+        AnalysisResult result = new AnalysisResult();
+        result.finalBalance = currentTotal;
+        result.mdd = Math.round(maxDrawdown * 100) / 100.0;
+        result.curve = curve;
 
-        // Risk 지표 (변동성, 샤프지수)
+        double totalReturn = ((double)(currentTotal - seedMoney) / seedMoney) * 100;
+        result.totalReturn = Math.round(totalReturn * 100) / 100.0;
+
+        double years = periodMonths / 12.0;
+        if(years < 1) years = 1;
+        double cagr = (Math.pow((double)currentTotal / seedMoney, 1.0 / years) - 1) * 100;
+        result.cagr = Math.round(cagr * 100) / 100.0;
+
         if (!dailyReturns.isEmpty()) {
-            // 표준편차
-            double mean = dailyReturns.stream().mapToDouble(val -> val).average().orElse(0.0);
-            double variance = dailyReturns.stream().mapToDouble(val -> Math.pow(val - mean, 2)).sum() / dailyReturns.size();
-            double stdevDaily = Math.sqrt(variance);
+            double mean = dailyReturns.stream().mapToDouble(d->d).average().orElse(0.0);
+            double variance = dailyReturns.stream().mapToDouble(d->Math.pow(d-mean, 2)).sum() / dailyReturns.size();
+            double vol = Math.sqrt(variance) * Math.sqrt(252) * 100;
+            result.volatility = Math.round(vol * 100) / 100.0;
             
-            // 연간 변동성 (Annualized Volatility) = 일간 표준편차 * sqrt(252)
-            double volatility = stdevDaily * Math.sqrt(252) * 100; 
-            res.setVolatility(Math.round(volatility * 100) / 100.0);
-
-            // 샤프 지수 (Sharpe Ratio) = (CAGR - RiskFree) / Volatility
-            double riskFreeRate = 3.0; // 무위험 수익률 3% 가정
-            if (volatility > 0) {
-                double sharpe = (cagr - riskFreeRate) / volatility;
-                res.setSharpeRatio(Math.round(sharpe * 100) / 100.0);
-            } else {
-                res.setSharpeRatio(0.0);
+            if (vol > 0) {
+                double sharpe = (cagr - 3.0) / vol; // RiskFree 3%
+                result.sharpeRatio = Math.round(sharpe * 100) / 100.0;
             }
-        } else {
-            res.setVolatility(0.0);
-            res.setSharpeRatio(0.0);
-        }
-
-        // 6. 이력 DB 저장 (로그인한 사용자만)
-        if (username != null && !username.equals("anonymousUser")) {
-            saveHistory(req, res, username);
         }
         
-        return res;
+        return result;
+    }
+
+    // 내부 결과 클래스
+    private static class AnalysisResult {
+        long finalBalance;
+        double totalReturn;
+        double cagr;
+        double mdd;
+        double volatility;
+        double sharpeRatio;
+        List<AllocationDto.ChartPoint> curve;
+    }
+
+    // --- Helpers ---
+    private AllocationDto.Asset createAsset(String code, int weight) {
+        AllocationDto.Asset a = new AllocationDto.Asset();
+        a.setCode(code); a.setWeight(weight);
+        return a;
     }
 
     /**
