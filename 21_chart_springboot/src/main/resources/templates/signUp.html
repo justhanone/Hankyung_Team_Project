@@ -71,7 +71,10 @@ button:hover {
 
     <form th:action="@{/user/joinProc}" method="post">
         <input type="text" name="username" placeholder="아이디" required>
-        <input type="password" name="password" placeholder="비밀번호" required>
+        <input type="password" id="password" name="password" placeholder="비밀번호" required>
+        <div id="pwHelp" style="font-size:13px; margin-bottom:8px; color:#888; display:none;">
+  			* 8자 이상, 공백 없이 입력하세요.
+  		</div>
         <input type="text" name="name" placeholder="이름" required>
         <input type="email" name="email" placeholder="이메일" required>
         <button type="submit">회원가입</button>
@@ -81,5 +84,20 @@ button:hover {
         <a th:href="@{/user/login}">이미 계정이 있으신가요? 로그인</a>
     </div>
 </div>
+
+<script>
+	document.addEventListener('DOMContentLoaded', function() {
+	    const pwInput = document.getElementById('password');
+	    const pwHelp  = document.getElementById('pwHelp');
+	
+	    pwInput.addEventListener('click', () => {
+	        pwHelp.style.display = 'block';
+	    });
+	
+	    pwInput.addEventListener('blur', () => {
+	        pwHelp.style.display = 'none';
+	    });
+	});
+</script>
 </body>
 </html>

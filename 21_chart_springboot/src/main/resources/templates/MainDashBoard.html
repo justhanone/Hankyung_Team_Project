@@ -207,8 +207,25 @@
         // 모달 열기 (애니메이션 효과 적용)
         function openAnyModal(modalId) {
             const modal = document.getElementById(modalId);
+            if(!modal) return;
+            
+            const body = modal.querySelector('.modal-body');
+            
+            if(body) {
+            	body.scrollTop = 0;
+            	body.scrollTo(0,0);
+            }
+            
             modal.style.display = 'flex';
-            setTimeout(() => { modal.classList.add('show'); }, 10);
+            
+            setTimeout(() => {
+				modal.classList.add('show');
+				
+            	if(body) {
+					body.scrollTop=0;
+					body.scrollTo(0,0);
+            	}
+            }, 10);
         }
 
         // 모달 닫기
@@ -328,15 +345,14 @@
         // 1. 랭킹 더보기 모달
         function openModal() {
             const title = document.querySelector('#rankModal h3');
+            
             if (title) {
                 title.textContent = currentRankMode === 'rising' ? '🔥 실시간 급상승 Top 30' : '📉 실시간 급하락 Top 30';
             }
-            // 스크롤 맨 위로
-            const body = document.querySelector('#rankModal .modal-body');
-            if(body) body.scrollTop = 0;
             
             openAnyModal('rankModal');
         }
+        
         function closeModal() { closeAnyModal('rankModal'); }
 
         // 2. 관심종목 관리 모달
