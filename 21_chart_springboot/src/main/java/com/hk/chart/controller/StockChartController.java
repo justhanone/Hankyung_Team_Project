@@ -75,7 +75,7 @@ public class StockChartController {
             @RequestParam(required = false, defaultValue = "D") String type) { // ⭐️ type 추가 (기본값 D)
         
         List<StockCandle> entities;
-        int limit = 500;
+        int limit = 5000;
 
         try {
             if ("D".equals(type)) {
@@ -178,5 +178,4 @@ public class StockChartController {
     public List<RankingDto> getFallingRank() {
         return marketService.getCachedRankingFromDB(1); // 1: 하락
     }
-
 }

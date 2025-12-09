@@ -9,7 +9,6 @@
     <title>AlgoView - 차트</title>
 </head>
 <body>
-    <!-- 헤더 -->
     <header>
         <div class="header-content">
             <div class="logo"><a href="/">Algo-View</a></div>
@@ -48,10 +47,37 @@
         </div>
 
         <div id="tv_chart"></div>
-
-        <div id="analysisSection">
-            <div class="analysis-header" id="analysisHeader">📊 일봉 기준 캔들 패턴 분석</div>
+        
+        <div id="patternSection" class="analysis-section">
+            <div class="analysis-header" id="patternHeader">📊 일봉 기준 캔들 패턴 분석</div>
             <div id="patternList" class="pattern-list"></div>
+        </div>
+        
+        <div id="aiSection" class="analysis-section" style="display:none;"> 
+            <div class="analysis-header">🤖 AI 주가 예측 (Beta)</div>
+            
+            <div id="aiPredictionCard" class="pattern-card ai-card">
+                <div class="pattern-top">
+                    <span class="pattern-name">내일 주가 예측</span>
+                    <span id="aiTrendBadge" class="trend-badge">-</span>
+                </div>
+                <div class="pattern-desc" id="aiPredictionText">데이터 분석 중...</div>
+                <div class="pattern-meta" id="aiPredictionMeta"></div>
+            </div>
+
+            <div class="prediction-table-wrapper">
+                <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #666;">📅 향후 7거래일 예상 추이</h4>
+                <table class="prediction-table">
+                    <thead>
+                        <tr>
+                            <th>날짜 (예상)</th>
+                            <th>예상 주가</th>
+                            <th>전일대비</th>
+                        </tr>
+                    </thead>
+                    <tbody id="predictionTableBody"></tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -80,55 +106,49 @@
         let isWatchedState = false; 
         
         let chartContainer;
-        let chart, candleSeries, ma5Series, ma20Series, ma60Series, volumeSeries;
+        let chart, candleSeries, ma5Series, ma20Series, ma60Series, volumeSeries, predictionSeries;
 
         document.addEventListener('DOMContentLoaded', function () {
-            // 1. 대시보드에서 넘어온 데이터 확인
-            const savedCode = localStorage.getItem('selectedCode');
-            const savedName = localStorage.getItem('selectedName');
-
-            if (savedCode && savedName) {
-                currentCode = savedCode;
-                currentName = savedName;
-                localStorage.removeItem('selectedCode');
-                localStorage.removeItem('selectedName');
-            }
+            try {
+                const savedCode = localStorage.getItem('selectedCode');
+                const savedName = localStorage.getItem('selectedName');
+                if (savedCode && savedName) {
+                    currentCode = savedCode;
+                    currentName = savedName;
+                    localStorage.removeItem('selectedCode');
+                    localStorage.removeItem('selectedName');
+                }
+            } catch (e) { console.warn(e); }
             
-            // 2. 초기화
             initChart();
             loadDataAndAnalysis();
-            
-            // 3. 검색 기능 초기화 호출
             setupSearch();
         });
 
         function initChart() {
             chartContainer = document.getElementById('tv_chart');
-            
             chart = LightweightCharts.createChart(chartContainer, {
                 width: chartContainer.clientWidth, height: 550,
                 layout: { backgroundColor: '#ffffff', textColor: '#333', fontFamily: 'Pretendard, sans-serif' },
                 grid: { vertLines: { color: '#f0f3fa' }, horzLines: { color: '#f0f3fa' } },
-                crosshair: { mode: LightweightCharts.CrosshairMode.Normal, vertLine: { labelVisible: false }, horzLine: { labelVisible: false } },
+                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
                 rightPriceScale: { visible: true, borderColor: '#e0e0e0', scaleMargins: { top: 0.05, bottom: 0.30 } },
-                timeScale: { rightOffset: 12, barSpacing: 10, timeVisible: true, secondsVisible: false, borderColor: '#e0e0e0' },
+                timeScale: { rightOffset: 12, barSpacing: 10, timeVisible: true, borderColor: '#e0e0e0' },
             });
 
-            candleSeries = chart.addCandlestickSeries({ upColor: '#e11d48', borderUpColor: '#e11d48', wickUpColor: '#e11d48', downColor: '#2563eb', borderDownColor: '#2563eb', wickDownColor: '#2563eb', lastValueVisible: false });
-            ma5Series = chart.addLineSeries({ color: '#2962FF', lineWidth: 1, crosshairMarkerVisible: false, lastValueVisible: false });
-            ma20Series = chart.addLineSeries({ color: '#B71C1C', lineWidth: 2, crosshairMarkerVisible: false, lastValueVisible: false });
-            ma60Series = chart.addLineSeries({ color: '#00C853', lineWidth: 2, crosshairMarkerVisible: false, lastValueVisible: false });
+            candleSeries = chart.addCandlestickSeries({ upColor: '#e11d48', borderUpColor: '#e11d48', wickUpColor: '#e11d48', downColor: '#2563eb', borderDownColor: '#2563eb', wickDownColor: '#2563eb' });
+            ma5Series = chart.addLineSeries({ color: '#2962FF', lineWidth: 1, lastValueVisible: false });
+            ma20Series = chart.addLineSeries({ color: '#B71C1C', lineWidth: 2, lastValueVisible: false });
+            ma60Series = chart.addLineSeries({ color: '#00C853', lineWidth: 2, lastValueVisible: false });
             volumeSeries = chart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol_scale' , lastValueVisible: false});
+            
+            predictionSeries = chart.addLineSeries({
+                color: '#6366f1', lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dotted, title: 'AI 예측', crosshairMarkerVisible: true
+            });
             
             chart.priceScale('vol_scale').applyOptions({ scaleMargins: { top: 0.75, bottom: 0 } });
             chart.subscribeCrosshairMove(updateLegend);
-            
             window.addEventListener('resize', () => chart.resize(chartContainer.clientWidth, 550));
-            
-            // [수정] loadData 함수가 없어서 에러가 발생하므로 주석 처리
-            // chart.timeScale().subscribeVisibleLogicalRangeChange(logicalRange => {
-            //     if (logicalRange !== null && logicalRange.from < 10 && !isLoading && allData.length > 0) loadData(allData[0].x);
-            // });
         }
 
         window.changePeriod = function(period) {
@@ -136,123 +156,204 @@
             currentPeriod = period;
             document.querySelectorAll('.period-btn').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
-            const pText = period === 'D' ? '일봉' : (period === 'W' ? '주봉' : '월봉');
-            document.getElementById('analysisHeader').textContent = `📊 ${pText} 기준 캔들 패턴 분석`;
             
-            // 데이터 초기화
+            const pText = period === 'D' ? '일봉' : (period === 'W' ? '주봉' : '월봉');
+            const header = document.getElementById('patternHeader');
+            if(header) header.textContent = `📊 ${pText} 기준 캔들 패턴 분석`;
+            
             allData = [];
-            candleSeries.setData([]); ma5Series.setData([]); ma20Series.setData([]); ma60Series.setData([]); volumeSeries.setData([]);
+            candleSeries.setData([]); ma5Series.setData([]); ma20Series.setData([]); ma60Series.setData([]); volumeSeries.setData([]); predictionSeries.setData([]);
             loadDataAndAnalysis();
         };
         
         function checkWatchStatus() {
             fetch(`/api/watchlist/check/${currentCode}`)
-                .then(res => {
-                    if (res.status === 401) return false; 
-                    return res.json();
-                })
+                .then(res => res.json())
                 .then(isWatched => {
                     isWatchedState = isWatched; 
                     const btn = document.getElementById('btnStar');
-                    if (isWatched) {
-                        btn.style.color = '#FFD700'; btn.innerText = '★';
-                    } else {
-                        btn.style.color = '#ddd'; btn.innerText = '☆';
+                    if(btn) {
+                        btn.style.color = isWatched ? '#FFD700' : '#ddd';
+                        btn.innerText = isWatched ? '★' : '☆';
                     }
-                })
-                .catch(err => console.log("찜 상태 확인 실패:", err));
+                }).catch(e => {});
         }
 
         window.toggleWatchlist = function() {
-            const checkRedirect = (res) => {
+           const checkRedirect = (res) => {
                 if (res.redirected && res.url.includes('login')) return true;
                 return false;
             };
-
             if (isWatchedState) { 
-                if (!confirm(`[${currentName}] 을(를) 관심종목에서 삭제하시겠습니까?`)) return;
+                if (!confirm(`관심종목에서 삭제하시겠습니까?`)) return;
                 fetch(`/api/watchlist/${currentCode}`, { method: 'DELETE' })
-                    .then(async res => {
-                        if (checkRedirect(res)) {
-                            if(confirm("로그인이 필요한 서비스입니다.\n로그인 하시겠습니까?")) location.href = '/user/login';
-                            return;
-                        }
-                        if (res.ok) { alert("삭제되었습니다."); checkWatchStatus(); }
-                        else if (res.status === 401) {
-                            if(confirm("로그인이 필요한 서비스입니다.\n로그인 하시겠습니까?")) location.href = '/user/login';
-                        } else {
-                            const msg = await res.text(); alert("오류 발생: " + msg);
-                        }
-                    });
+                    .then(async res => { if (checkRedirect(res)) { location.href = '/user/login'; return; } if (res.ok) { alert("삭제되었습니다."); checkWatchStatus(); } });
             } else {
-                if (!confirm(`[${currentName}] 을(를) 관심종목에 추가하시겠습니까?`)) return;
+                if (!confirm(`관심종목에 추가하시겠습니까?`)) return;
                 const encodedName = encodeURIComponent(currentName);
                 fetch(`/api/watchlist?code=${currentCode}&name=${encodedName}`, { method: 'POST' })
-                    .then(async res => {
-                        if (checkRedirect(res)) {
-                            if(confirm("로그인이 필요한 서비스입니다.\n로그인 하시겠습니까?")) location.href = '/user/login';
-                            return;
-                        }
-                        if (res.ok) { alert("추가되었습니다."); checkWatchStatus(); }
-                        else if (res.status === 401) {
-                            if(confirm("로그인이 필요한 서비스입니다.\n로그인 하시겠습니까?")) location.href = '/user/login';
-                        } else {
-                            const msg = await res.text(); alert("오류 발생: " + msg);
-                        }
-                    });
+                    .then(async res => { if (checkRedirect(res)) { location.href = '/user/login'; return; } if (res.ok) { alert("추가되었습니다."); checkWatchStatus(); } });
             }
         };
 
         function loadDataAndAnalysis() {
             if (isLoading) return; isLoading = true;
-            
+            predictionSeries.setData([]);
+            const aiSection = document.getElementById('aiSection');
+            if(aiSection) aiSection.style.display = 'none';
+
             fetch(`/api/stock/${currentCode}/candle-data?type=${currentPeriod}`)
                 .then(res => res.json())
                 .then(data => {
                     if (!Array.isArray(data) || data.length === 0) {
-                        if (confirm(`[${currentName}] 데이터가 없습니다.\n데이터를 수집하시겠습니까?`)) {
-                            collectData(currentCode);
-                        }
+                        if (confirm(`데이터가 없습니다. 수집하시겠습니까?`)) collectData(currentCode);
                         isLoading = false; return;
                     }
                     allData = data;
                     updateChartSeries(allData);
                     updateLegend({ time: null, point: { x: -1, y: -1 } });
+                    
                     loadAnalysisData(); 
+                    if (currentPeriod === 'D') loadPrediction(currentCode);
+                    
                     checkWatchStatus();
                     isLoading = false;
                 })
-                .catch(err => { console.error(err); isLoading = false; });
+                .catch(err => { console.error("데이터 로드 실패:", err); isLoading = false; });
+        }
+
+        // [수정] AI 예측 함수 (테이블 업데이트 포함)
+        function loadPrediction(code) {
+            fetch(`/api/analyze?code=${code}`)
+                .then(res => {
+                    if(!res.ok) throw new Error("AI 분석 실패");
+                    return res.json();
+                })
+                .then(prices => { // prices: [내일, 모레, ...]
+                    if (!prices || prices.length === 0) return;
+
+                    const lastData = allData[allData.length - 1];
+                    const lastDateStr = lastData.x;
+                    const lastClose = lastData.y[3];
+
+                    // 1. 차트 그리기
+                    const predictionData = [];
+                    predictionData.push({ time: lastDateStr, value: lastClose });
+                    
+                    let currentDateStr = lastDateStr;
+                    prices.forEach(price => {
+                        currentDateStr = getNextBusinessDay(currentDateStr);
+                        predictionData.push({ time: currentDateStr, value: price });
+                    });
+                    predictionSeries.setData(predictionData);
+
+                    // 2. 섹션 표시
+                    const aiSection = document.getElementById('aiSection');
+                    if(aiSection) aiSection.style.display = 'block';
+
+                    // 3. 카드 업데이트
+                    updateAICard(lastClose, prices[0]);
+
+                    // 4. [추가] 테이블 업데이트
+                    updatePredictionTable(prices, lastClose, lastDateStr);
+                })
+                .catch(err => {
+                    console.error("AI 예측 에러:", err);
+                    const aiSection = document.getElementById('aiSection');
+                    if(aiSection) aiSection.style.display = 'block';
+                    document.getElementById('aiPredictionText').innerText = "분석 실패 (잠시 후 시도)";
+                });
+        }
+
+        function updateAICard(todayPrice, tomorrowPrice) {
+            const card = document.getElementById('aiPredictionCard');
+            const badge = document.getElementById('aiTrendBadge');
+            const text = document.getElementById('aiPredictionText');
+            const meta = document.getElementById('aiPredictionMeta');
+
+            if(card) {
+                const diff = tomorrowPrice - todayPrice;
+                const diffPercent = ((diff / todayPrice) * 100).toFixed(2);
+                
+                if (diff > 0) {
+                    badge.className = 'trend-badge trend-up';
+                    badge.innerText = `▲ ${diffPercent}% (내일)`;
+                    text.innerHTML = `단기적으로 <span style="color:#e11d48; font-weight:bold;">상승 추세</span>가 예상됩니다.`;
+                } else {
+                    badge.className = 'trend-badge trend-down';
+                    badge.innerText = `▼ ${diffPercent}% (내일)`;
+                    text.innerHTML = `단기적으로 <span style="color:#2563eb; font-weight:bold;">하락/조정</span>이 예상됩니다.`;
+                }
+                meta.innerHTML = `<span>현재: ${Math.round(todayPrice).toLocaleString()}원</span> <span>내일: <strong>${Math.round(tomorrowPrice).toLocaleString()}원</strong></span>`;
+            }
+        }
+
+        // [추가] 테이블 생성 함수
+        function updatePredictionTable(prices, currentPrice, currentDate) {
+            const tbody = document.getElementById('predictionTableBody');
+            tbody.innerHTML = ''; 
+
+            let prevPrice = currentPrice;
+            let dateStr = currentDate;
+
+            prices.forEach(price => {
+                dateStr = getNextBusinessDay(dateStr);
+                const diff = price - prevPrice;
+                const diffPercent = ((diff / prevPrice) * 100).toFixed(2);
+                
+                let colorClass = '';
+                let sign = '';
+                if (diff > 0) { colorClass = 'price-up'; sign = '+'; }
+                else if (diff < 0) { colorClass = 'price-down'; }
+
+                const row = `
+                    <tr>
+                        <td>${dateStr}</td>
+                        <td class="${colorClass}">${Math.round(price).toLocaleString()}원</td>
+                        <td class="${colorClass}">${sign}${diffPercent}%</td>
+                    </tr>
+                `;
+                tbody.insertAdjacentHTML('beforeend', row);
+                prevPrice = price; // 기준값 업데이트
+            });
+        }
+
+        function getNextBusinessDay(dateString) {
+            try {
+                const date = new Date(dateString);
+                date.setDate(date.getDate() + 1);
+                if (date.getDay() === 6) date.setDate(date.getDate() + 2);
+                else if (date.getDay() === 0) date.setDate(date.getDate() + 1);
+                
+                const y = date.getFullYear();
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                const d = String(date.getDate()).padStart(2, '0');
+                return `${y}-${m}-${d}`;
+            } catch(e) { return dateString; }
         }
 
         function loadAnalysisData() {
             const listDiv = document.getElementById('patternList');
-            const section = document.getElementById('analysisSection');
-            listDiv.innerHTML = ''; section.style.display = 'none';
-
+            const section = document.getElementById('patternSection');
+            listDiv.innerHTML = ''; 
             fetch(`/api/stock/${currentCode}/analysis?type=${currentPeriod}`)
                 .then(res => res.json())
                 .then(list => {
-                    section.style.display = 'block';
+                    if(section) section.style.display = 'block';
                     if (!list || list.length === 0 || (list.length === 1 && list[0].type === 'NONE')) {
-                        listDiv.innerHTML = `<div style="color:#999; padding:10px;">발견된 특이 패턴이 없습니다.</div>`;
+                        listDiv.innerHTML = `<div style="color:#999; padding:10px;">특이 패턴 없음</div>`;
                         return;
                     }
                     list.forEach(item => {
                         const def = PATTERN_DEFINITIONS[item.type] || PATTERN_DEFINITIONS["NONE"];
                         let badgeClass = 'trend-neutral'; let trendIcon = '-';
-                        if (def.trend === '상승') { badgeClass = 'trend-up'; trendIcon = '▲ 상승'; }
-                        else if (def.trend === '하락') { badgeClass = 'trend-down'; trendIcon = '▼ 하락'; }
+                        if (def.trend === '상승') { badgeClass = 'trend-up'; trendIcon = '▲'; }
+                        else if (def.trend === '하락') { badgeClass = 'trend-down'; trendIcon = '▼'; }
                         const stars = '★'.repeat(def.stars) + '☆'.repeat(5 - def.stars);
-                        const cardHtml = `
-                            <div class="pattern-card">
-                                <div class="pattern-top"><span class="pattern-name">${def.name}</span><span class="trend-badge ${badgeClass}">${trendIcon}</span></div>
-                                <div class="pattern-desc">${def.desc}</div>
-                                <div class="pattern-meta"><span>발생일: ${item.date}</span><span class="reliability-stars">${stars}</span></div>
-                            </div>`;
+                        const cardHtml = `<div class="pattern-card"><div class="pattern-top"><span class="pattern-name">${def.name}</span><span class="trend-badge ${badgeClass}">${trendIcon}</span></div><div class="pattern-desc">${def.desc}</div><div class="pattern-meta"><span>${item.date}</span><span class="reliability-stars">${stars}</span></div></div>`;
                         listDiv.insertAdjacentHTML('beforeend', cardHtml);
                     });
-                });
+                }).catch(e => {});
         }
 
         function updateChartSeries(dataList) {
@@ -261,49 +362,28 @@
             const ma20 = dataList.map(d => ({ time: d.x, value: d.ma20 })).filter(d => d.value);
             const ma60 = dataList.map(d => ({ time: d.x, value: d.ma60 })).filter(d => d.value);
             const volumes = dataList.map(d => ({ time: d.x, value: d.volume, color: (d.y[3] >= d.y[0]) ? 'rgba(225, 29, 72, 0.5)' : 'rgba(37, 99, 235, 0.5)' }));
-
             candleSeries.setData(candles); ma5Series.setData(ma5); ma20Series.setData(ma20); ma60Series.setData(ma60); volumeSeries.setData(volumes);
         }
 
         function updateLegend(param) {
-            const valid = (param.time && param.point.x >= 0 && param.point.x <= chartContainer.clientWidth && param.point.y >= 0 && param.point.y <= chartContainer.clientHeight);
+             const valid = (param.time && param.point.x >= 0 && param.point.x <= chartContainer.clientWidth && param.point.y >= 0 && param.point.y <= chartContainer.clientHeight);
             const data = valid ? param.seriesData.get(candleSeries) : (allData.length > 0 ? allData[allData.length - 1] : null);
             const ma5 = valid ? param.seriesData.get(ma5Series) : (allData.length > 0 ? allData[allData.length - 1]?.ma5 : null);
             const ma20 = valid ? param.seriesData.get(ma20Series) : (allData.length > 0 ? allData[allData.length - 1]?.ma20 : null);
             const ma60 = valid ? param.seriesData.get(ma60Series) : (allData.length > 0 ? allData[allData.length - 1]?.ma60 : null);
-
             document.querySelector('.stock-title').innerText = `${currentName} (${currentCode})`;
-            
             let infoDiv = document.getElementById('chartInfo');
-            if (!infoDiv) {
-                const container = document.getElementById('chartLegend');
-                infoDiv = document.createElement('div');
-                infoDiv.id = 'chartInfo';
-                container.appendChild(infoDiv);
-            }
-
+            if (!infoDiv) { const container = document.getElementById('chartLegend'); infoDiv = document.createElement('div'); infoDiv.id = 'chartInfo'; container.appendChild(infoDiv); }
             let infoHtml = '';
             if (data) {
-                const open = (data.open || data.y?.[0] || 0);
-                const high = (data.high || data.y?.[1] || 0);
-                const low = (data.low || data.y?.[2] || 0);
-                const close = (data.close || data.y?.[3] || 0);
+                const open = (data.open || data.y?.[0] || 0); const high = (data.high || data.y?.[1] || 0); const low = (data.low || data.y?.[2] || 0); const close = (data.close || data.y?.[3] || 0);
                 const colorClass = (close >= open) ? 'up' : 'down';
-
-                infoHtml += `
-                    <span class="legend-item"><span class="legend-label">시</span><span class="legend-value ${colorClass}">${Number(open).toLocaleString()}</span></span>
-                    <span class="legend-item"><span class="legend-label">고</span><span class="legend-value ${colorClass}">${Number(high).toLocaleString()}</span></span>
-                    <span class="legend-item"><span class="legend-label">저</span><span class="legend-value ${colorClass}">${Number(low).toLocaleString()}</span></span>
-                    <span class="legend-item"><span class="legend-label">종</span><span class="legend-value ${colorClass}">${Number(close).toLocaleString()}</span></span>
-                `;
+                infoHtml += `<span class="legend-item"><span class="legend-label">시</span><span class="legend-value ${colorClass}">${Number(open).toLocaleString()}</span></span><span class="legend-item"><span class="legend-label">고</span><span class="legend-value ${colorClass}">${Number(high).toLocaleString()}</span></span><span class="legend-item"><span class="legend-label">저</span><span class="legend-value ${colorClass}">${Number(low).toLocaleString()}</span></span><span class="legend-item"><span class="legend-label">종</span><span class="legend-value ${colorClass}">${Number(close).toLocaleString()}</span></span>`;
             }
-            
             const getVal = (obj) => (obj && typeof obj === 'object' && 'value' in obj) ? obj.value : obj;
-            
             if (getVal(ma5)) infoHtml += `<span class="legend-item" style="color: #2962FF;"><span class="legend-label">MA5</span><span class="legend-value">${Math.round(getVal(ma5)).toLocaleString()}</span></span>`;
             if (getVal(ma20)) infoHtml += `<span class="legend-item" style="color: #B71C1C;"><span class="legend-label">MA20</span><span class="legend-value">${Math.round(getVal(ma20)).toLocaleString()}</span></span>`;
             if (getVal(ma60)) infoHtml += `<span class="legend-item" style="color: #00C853;"><span class="legend-label">MA60</span><span class="legend-value">${Math.round(getVal(ma60)).toLocaleString()}</span></span>`;
-            
             infoDiv.innerHTML = infoHtml;
         }
 
@@ -318,57 +398,30 @@
             });
         }
 
-        // 검색 기능 설정 함수
         function setupSearch() {
             const searchInput = document.getElementById('searchInput');
             const searchResult = document.getElementById('searchResult');
-
             searchInput.addEventListener('keyup', function() {
                 const keyword = this.value.trim();
                 if (keyword.length < 1) { searchResult.style.display = 'none'; return; }
-
-                fetch(`/api/stock/search?keyword=${keyword}`)
-                    .then(res => res.json())
-                    .then(list => {
+                fetch(`/api/stock/search?keyword=${keyword}`).then(res => res.json()).then(list => {
                         searchResult.innerHTML = '';
                         if (list.length > 0) {
                             searchResult.style.display = 'block';
                             list.forEach(stock => {
-                                const li = document.createElement('li');
-                                li.textContent = `${stock.name} (${stock.code})`;
-                                li.onclick = () => selectStock(stock.code, stock.name);
-                                searchResult.appendChild(li);
+                                const li = document.createElement('li'); li.textContent = `${stock.name} (${stock.code})`; li.onclick = () => selectStock(stock.code, stock.name); searchResult.appendChild(li);
                             });
-                        } else {
-                            searchResult.style.display = 'none';
-                        }
-                    })
-                    .catch(err => console.error("검색 오류:", err));
+                        } else { searchResult.style.display = 'none'; }
+                    });
             });
-            
-            // 외부 클릭 시 닫기
-            document.addEventListener('click', function(e) {
-                if (!searchInput.contains(e.target) && !searchResult.contains(e.target)) {
-                    searchResult.style.display = 'none';
-                }
-            });
+            document.addEventListener('click', function(e) { if (!searchInput.contains(e.target) && !searchResult.contains(e.target)) { searchResult.style.display = 'none'; } });
         }
 
-        // 종목 선택 시 호출되는 함수
         function selectStock(code, name) {
-            currentCode = code;
-            currentName = name;
-            
-            // 검색창 초기화
-            const searchInput = document.getElementById('searchInput');
-            const searchResult = document.getElementById('searchResult');
-            searchInput.value = ''; 
-            searchResult.style.display = 'none';
-            
-            // 데이터 새로 로드
+            currentCode = code; currentName = name;
+            const searchInput = document.getElementById('searchInput'); const searchResult = document.getElementById('searchResult'); searchInput.value = ''; searchResult.style.display = 'none';
             document.querySelector('.stock-title').textContent = `${name} (${code})`;
-            allData = []; 
-            candleSeries.setData([]); ma5Series.setData([]); ma20Series.setData([]); ma60Series.setData([]); volumeSeries.setData([]);
+            allData = []; candleSeries.setData([]); ma5Series.setData([]); ma20Series.setData([]); ma60Series.setData([]); volumeSeries.setData([]); predictionSeries.setData([]);
             loadDataAndAnalysis();
         }
     </script>

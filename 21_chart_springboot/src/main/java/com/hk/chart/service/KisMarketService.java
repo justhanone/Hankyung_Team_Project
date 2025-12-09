@@ -14,9 +14,13 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.springframework.http.HttpHeaders;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,10 +35,12 @@ import com.hk.chart.dto.response.KisDailyPriceResponse;
 import com.hk.chart.entity.StockCandle;
 import com.hk.chart.entity.StockRanking;
 import com.hk.chart.repository.StockCandleRepository;
+import com.hk.chart.repository.StockInfoRepository;
 import com.hk.chart.repository.StockRankingRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import reactor.util.retry.Retry;
 
 @Service
 @RequiredArgsConstructor
@@ -46,12 +52,68 @@ public class KisMarketService {
     private final KisAuthService authService; // 토큰 관리를 위해 주입
     private final StockCandleRepository candleRepository;
     private final StockRankingRepository rankingRepository;
+    private final StockInfoRepository stockInfoRepository;
     
     private static final String TR_ID_PERIOD_PRICE = "FHKST03010100";
 
     // 거래 ID (Daily Price Inquiry): FHKST01010400
     private static final String TR_ID_DAILY_PRICE = "FHKST01010400";
     private static final String TR_ID_INDEX_PRICE = "FHKUP03500100";
+    
+    /**
+     * [관리자용] 1. 전 종목 20년 치 데이터 병렬 초기 수집 (속도 개선)
+     * - 동시에 10개 종목씩 수집 (초당 제한 고려)
+     */
+    public void initAllStocksData() {
+        List<String> allCodes = stockInfoRepository.findAllCodes();
+        log.info(">>> [병렬 초기화] 전 종목 데이터 수집 시작 (총 {}개 종목)", allCodes.size());
+
+        // 스레드 풀 생성 (동시 5개 작업)
+        // *주의: 너무 많이 늘리면 IP 차단될 수 있음
+        ExecutorService executor = Executors.newFixedThreadPool(3);
+        
+        String todayStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+
+        for (String code : allCodes) {
+            executor.submit(() -> {
+                try {
+                    // 이미 오늘까지 수집되었는지 확인 (이어받기)
+                    String lastDate = candleRepository.findLatestDate(code);
+                    
+                    if (lastDate != null && lastDate.equals(todayStr)) {
+                        return; // 이미 완료됨
+                    }
+                    
+                    if (lastDate == null) {
+                        log.info(">>> [신규 수집] {}", code);
+                        collectAllHistory(code); 
+                    } else {
+                        log.info(">>> [업데이트] {}", code);
+                        updateStockData(code);
+                    }
+                    
+                    // API 호출 제한 고려 (각 스레드당 1초 대기)
+                    Thread.sleep(1500); 
+
+                } catch (Exception e) {
+                    log.error(">>> [수집 실패] {}: {}", code, e.getMessage());
+                }
+            });
+        }
+
+        executor.shutdown();
+        try {
+            if (executor.awaitTermination(24, TimeUnit.HOURS)) {
+                log.info(">>> [병렬 초기화] 모든 종목 수집 완료.");
+            } else {
+                log.warn(">>> [병렬 초기화] 시간 초과.");
+            }
+        } catch (InterruptedException e) {
+            log.error(">>> [병렬 초기화] 인터럽트 발생");
+            executor.shutdownNow();
+        }
+    }
+    
 
     /**
      * 특정 종목의 과거 일봉 데이터를 조회합니다.
@@ -82,7 +144,11 @@ public class KisMarketService {
                 .header("tr_id", TR_ID_DAILY_PRICE)
                 .retrieve()
                 .bodyToMono(KisDailyPriceResponse.class)
-                .block();
+                
+                .retryWhen(Retry.fixedDelay(3, Duration.ofSeconds(1))
+                        .filter(throwable -> isNetworkError(throwable)))
+                        
+                .block(); // 블로킹
 
         if (response != null && "0".equals(response.getRt_cd())) {
             return response.getOutput();
@@ -91,6 +157,13 @@ public class KisMarketService {
             throw new RuntimeException("주가 데이터 조회 실패: " + response.getMsg1());
         }
         return List.of();
+    }
+    
+    // 네트워크 관련 에러인지 확인하는 메서드
+    private boolean isNetworkError(Throwable t) {
+        // PrematureCloseException 등 네트워크 끊김 관련 에러일 때만 재시도
+        return t instanceof java.io.IOException 
+            || t instanceof org.springframework.web.reactive.function.client.WebClientRequestException;
     }
     
     /**
@@ -132,6 +205,54 @@ public class KisMarketService {
             return List.of();
         }
         return List.of();
+    }
+    
+    //종목 데이터 업데이트
+    /**
+     * [수정됨] 관리 대상 종목 일괄 업데이트 (비동기 실행)
+     * @Async: 이 메서드는 호출 즉시 리턴되며, 실제 로직은 별도 스레드에서 실행됨
+     */
+    @org.springframework.scheduling.annotation.Async 
+    public void updateAllWatchedStocks() {
+        log.info("======================================");
+        log.info(">>> [Update] 관리 대상 종목 일괄 업데이트 시작");
+
+        List<String> watchedStocks = candleRepository.findAllStockCodes();
+        int totalSize = watchedStocks.size();
+        log.info(">>> 대상 종목 수: {}개", totalSize);
+
+        // 1. 청크 단위 설정 (예: 50개씩)
+        int chunkSize = 50;
+        
+        for (int i = 0; i < totalSize; i += chunkSize) {
+            // 2. 50개씩 잘라서 서브 리스트 생성
+            int end = Math.min(totalSize, i + chunkSize);
+            List<String> chunk = watchedStocks.subList(i, end);
+            
+            log.info(">>> [Chunk] {} ~ {} 처리 중...", i + 1, end);
+
+            // 3. 청크 내부 반복
+            for (String stockCode : chunk) {
+                try {
+                    updateStockData(stockCode);
+                    Thread.sleep(100); // 종목 간 0.1초 대기
+                } catch (Exception e) {
+                    log.error(">>> 업데이트 오류 ({}): {}", stockCode, e.getMessage());
+                }
+            }
+
+            // 4. 청크 간 휴식 (중요: DB 커넥션 풀 반환 및 시스템 안정화 대기)
+            try {
+                Thread.sleep(1000); // 1초 대기
+                System.gc();        // 가비지 컬렉션 유도 (선택 사항)
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+
+        log.info(">>> [Update] 일괄 업데이트 작업 종료");
+        log.info("======================================");
     }
     
     /**
@@ -239,23 +360,24 @@ public class KisMarketService {
     
     @Transactional
     public void collectAllHistory(String stockCode) {
-        // 1. 수집 종료 기준일 (상장일 이전 등 충분히 과거)
-        String targetStartDate = "19900101"; 
+        // 1. 수집 종료 기준일 (20년 전)
+        String targetStartDate = LocalDate.now().minusYears(20).format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         
-        // 2. 수집 시작일 (오늘부터 과거로 감)
         LocalDate currentEndDate = LocalDate.now();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd");
 
-        System.out.println(">>> [" + stockCode + "] 과거 데이터 수집 시작...");
+        System.out.println(">>> [" + stockCode + "] 과거 데이터 수집 시작 (목표: " + targetStartDate + " 까지)");
 
         boolean isRunning = true;
         while (isRunning) {
-            try {
-                String endDateStr = currentEndDate.format(formatter);
-                // ⭐️ [핵심] 한 번에 100일 치만 요청 (API 제한 고려)
-                String startDateStr = currentEndDate.minusDays(100).format(formatter);
+            String startDateStr = ""; // 로그용 변수 선언
+            String endDateStr = "";
 
-                // 수집 목표 날짜보다 더 과거로 가면 종료
+            try {
+                endDateStr = currentEndDate.format(formatter);
+                startDateStr = currentEndDate.minusDays(100).format(formatter);
+
+                // 목표 날짜 도달 시 종료
                 if (startDateStr.compareTo(targetStartDate) < 0) {
                     System.out.println(">>> 목표 날짜(" + targetStartDate + ") 도달. 수집 종료.");
                     break;
@@ -266,20 +388,23 @@ public class KisMarketService {
                 // 3. API 호출
                 List<DailyPriceDataDto> dataList = getDailyPriceDataWithDate(stockCode, startDateStr, endDateStr);
 
+                // 데이터가 없거나(상장 이전/휴장일) null인 경우 처리
                 if (dataList == null || dataList.isEmpty()) {
-                    System.out.println(">>> 데이터 없음 (휴장일 또는 상장 이전). 계속 진행...");
-                    // 데이터가 없어도 날짜는 과거로 이동해야 함
-                    currentEndDate = currentEndDate.minusDays(100);
+                    System.out.println(">>> 데이터 없음. (상장일 이전일 가능성 높음)");
+                    // 데이터가 없어도 무한 루프 방지를 위해 날짜를 강제로 과거로 이동
+                    currentEndDate = currentEndDate.minusDays(101);
+                    
+                    // 연속적으로 데이터가 없다면, 상장일 이전에 도달했을 확률이 높으므로
+                    // 여기서 카운트를 세서 break를 할 수도 있지만, 일단은 계속 진행
+                    Thread.sleep(100); 
                     continue;
                 }
 
                 // 4. DB 저장
                 int saveCount = 0;
                 for (DailyPriceDataDto dto : dataList) {
-                    // 날짜 포맷 등 유효성 체크
                     if (dto.getStck_bsop_date() == null) continue;
 
-                    // 중복 확인 후 저장
                     if (!candleRepository.existsByStockCodeAndDate(stockCode, dto.getStck_bsop_date())) {
                         StockCandle candle = StockCandle.builder()
                                 .stockCode(stockCode)
@@ -294,24 +419,35 @@ public class KisMarketService {
                         saveCount++;
                     }
                 }
-                
                 System.out.println(">>> " + saveCount + "건 저장 완료.");
 
-                // 5. 다음 요청 준비: 이번 요청의 시작일 하루 전날을 다음 요청의 종료일로 설정
-                // (API가 100일치를 다 안 줄수도 있으므로, 단순히 날짜 계산으로 이동)
+                // 5. 다음 구간 설정
                 currentEndDate = currentEndDate.minusDays(101);
 
-                // 6. ⭐️ API 호출 제한 방지 (필수)
-                Thread.sleep(300); // 0.3초 대기
+                // 6. API 제한 방지
+                Thread.sleep(500); 
 
             } catch (Exception e) {
-                System.err.println(">>> 수집 중 에러 발생: " + e.getMessage());
+                // ⭐️ [수정됨] 에러가 나도 멈추지 않음
+                System.err.println(">>> [" + startDateStr + "~" + endDateStr + "] 구간 에러 발생: " + e.getMessage());
                 e.printStackTrace();
-                isRunning = false; // 에러 시 루프 중단
+                
+                // 에러 발생 시 잠시 대기 후(API 제한 걸렸을 수도 있으므로) 날짜를 이동해서 계속 진행
+                try { Thread.sleep(2000); } catch (InterruptedException ie) {} 
+                
+                // 여기서 날짜를 이동시키지 않으면 에러 난 구간에서 무한 루프 돌 수 있음 -> 강제 이동
+                currentEndDate = currentEndDate.minusDays(101);
             }
         }
-        calculateMovingAverage(stockCode);
-        System.out.println(">>> [" + stockCode + "] 수집 프로세스 종료.");
+        
+        // 이평선 계산 등 후처리
+        try {
+            calculateMovingAverage(stockCode);
+        } catch (Exception e) {
+            System.err.println(">>> 이평선 계산 중 에러: " + e.getMessage());
+        }
+        
+        System.out.println(">>> [" + stockCode + "] 수집 프로세스 최종 종료.");
     }
     
     /**
@@ -381,26 +517,55 @@ public class KisMarketService {
     /**
      * 특정 종목의 모든 데이터에 대해 이동평균선(MA)을 계산하고 DB에 업데이트합니다.
      */
-    @Transactional
     public void calculateMovingAverage(String stockCode) {
-        // 1. 전체 데이터를 날짜 오름차순(과거->현재)으로 조회
         List<StockCandle> candles = candleRepository.findAllByStockCodeOrderByDateAsc(stockCode);
         
         if (candles.isEmpty()) return;
 
-        System.out.println(">>> [" + stockCode + "] 이동평균선 계산 시작 (" + candles.size() + "건)...");
+        // log.info(">>> [{}] 이동평균선 계산 중... ({}건)", stockCode, candles.size());
 
-        // 2. 반복문을 돌며 MA 계산
         for (int i = 0; i < candles.size(); i++) {
             Integer ma5 = calculateAvg(candles, i, 5);
             Integer ma20 = calculateAvg(candles, i, 20);
             Integer ma60 = calculateAvg(candles, i, 60);
 
-            // Entity에 값 설정 (JPA의 Dirty Checking으로 인해 save 호출 없어도 트랜잭션 끝나면 자동 업데이트됨)
             candles.get(i).setMa(ma5, ma20, ma60);
         }
         
-        System.out.println(">>> [" + stockCode + "] 이동평균선 계산 완료.");
+        // ⭐️ [핵심] 변경된 내용을 DB에 즉시 반영 (Self-invocation 문제 해결)
+        candleRepository.saveAll(candles);
+    }
+    
+    /**
+     * ✅ [신규] 전 종목 이동평균선 일괄 재계산 (복구용)
+     * - 이미 수집된 데이터의 MA 값이 비어있을 때 실행
+     */
+    public void recalculateAllMas() {
+        List<String> allCodes = stockInfoRepository.findAllCodes();
+        log.info(">>> [복구] 전 종목 이동평균선 재계산 시작 (총 {}개)", allCodes.size());
+
+        // 병렬 처리로 빠르게 계산 (DB I/O가 많으므로 스레드 넉넉하게)
+        ExecutorService executor = Executors.newFixedThreadPool(20);
+
+        for (String code : allCodes) {
+            executor.submit(() -> {
+                try {
+                    calculateMovingAverage(code);
+                    // log.info(">>> [{}] MA 갱신 완료", code);
+                } catch (Exception e) {
+                    log.error(">>> [{}] MA 계산 실패: {}", code, e.getMessage());
+                }
+            });
+        }
+
+        executor.shutdown();
+        try {
+            if(executor.awaitTermination(2, TimeUnit.HOURS)) {
+                log.info(">>> [복구] 모든 종목 이동평균선 계산 완료.");
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+        }
     }
     
     // 네이버환율 API
@@ -577,7 +742,7 @@ public class KisMarketService {
     /**
      * ✅ [스케줄러] 매 15분마다 실행 - 급상승 & 급하락 모두 수집
      */
-    @Scheduled(cron = "0 0/15 * * * *") 
+    @Scheduled(cron = "0 0/30 * * * *") 
     @Transactional
     public void scheduleRankingUpdate() {
         log.info("⏰ [Scheduler] 실시간 랭킹 업데이트 시작...");

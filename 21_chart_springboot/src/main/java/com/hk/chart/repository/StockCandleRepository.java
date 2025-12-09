@@ -31,4 +31,7 @@ public interface StockCandleRepository extends JpaRepository<StockCandle, Long> 
 
     // ⭐️ 6. [오류 해결] 이동평균선 계산용: 전체 데이터를 날짜 오름차순(과거->현재)으로 조회
     List<StockCandle> findAllByStockCodeOrderByDateAsc(String stockCode);
+    
+    // 특정 종목의 데이터를 날짜 오름차순(과거->현재)으로 조회
+    List<StockCandle> findByStockCodeOrderByDateAsc(String stockCode);
 }
