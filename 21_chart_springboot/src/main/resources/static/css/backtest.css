@@ -39,7 +39,7 @@
 #historyModal .modal-content { width: 700px; max-height: 80vh; }
 #searchModal .modal-content { width: 400px; max-height: 500px; }
 .modal-header { padding: 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
-.modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+.modal-body { padding: 0px; overflow-y: auto; flex: 1; }
 .close-btn { font-size: 24px; cursor: pointer; color: #999; }
 
 /* 검색 리스트 */
@@ -50,7 +50,7 @@
 
 /* 히스토리 테이블 */
 .history-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-.history-table th { background: #f8f9fa; padding: 12px; text-align: left; position: sticky; top: 0; }
+.history-table th { background: #f8f9fa; padding: 12px; text-align: left; position: sticky; top: 0; z-index: 10; border-bottom: 2px solid #eee; box-shadow: 0 2px 5px rgba(0,0,0,0.05);}
 .history-table td { padding: 12px; border-bottom: 1px solid #eee; }
 
 .comp-table { width: 100%; font-size: 14px; border-collapse: collapse; margin-bottom: 20px; }
